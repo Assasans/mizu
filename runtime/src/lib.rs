@@ -4,6 +4,7 @@ pub mod dram;
 pub mod param;
 pub mod exception;
 pub mod csr;
+mod interrupt;
 
 #[cfg(test)]
 mod tests {
@@ -12,8 +13,8 @@ mod tests {
   use tracing_subscriber::{EnvFilter, fmt, prelude::*};
   use crate::cpu::Cpu;
 
-  #[test]
-  fn main() {
+  #[tokio::test]
+  async fn main() {
     tracing_subscriber::registry()
       .with(fmt::layer())
       .with(EnvFilter::from_default_env())
@@ -27,18 +28,30 @@ mod tests {
       let inst = match cpu.fetch() {
         Ok(inst) => inst,
         Err(exception) => {
-          error!("fetch failed: {:?}", exception);
-          break;
+          cpu.handle_exception(exception);
+          if exception.is_fatal() {
+            error!("fetch failed: {:?}", exception);
+            break;
+          }
+          continue;
         }
       };
 
-      match cpu.execute(inst) {
+      match cpu.execute(inst).await {
         Ok(new_pc) => cpu.pc = new_pc,
         Err(exception) => {
-          error!("execute failed: {:?}", exception);
-          break;
+          cpu.handle_exception(exception);
+          if exception.is_fatal() {
+            error!("execute failed: {:?}", exception);
+            break;
+          }
         }
       };
+
+      match cpu.check_pending_interrupt() {
+        Some(interrupt) => cpu.handle_interrupt(interrupt),
+        None => (),
+      }
     }
   }
 }

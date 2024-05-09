@@ -4,19 +4,15 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use tracing::{debug, trace};
 use crate::bus::Bus;
-use crate::csr::{Csr, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_SIE, MASK_SPIE, MASK_SPP, MEPC, MSTATUS, SEPC, SSTATUS};
+use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SIE, MASK_SPIE, MASK_SPP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC, SATP, SCAUSE, SEPC, SSTATUS, STVAL, STVEC};
 use crate::exception::Exception;
+use crate::interrupt::Interrupt;
 use crate::param::{DRAM_BASE, DRAM_SIZE};
 
 #[async_trait]
 pub trait InterruptHandler {
   async fn handle(&self, regs: &mut [u64; 32], bus: &mut Bus);
 }
-
-pub type Mode = u64;
-const User: Mode = 0b00;
-const Supervisor: Mode = 0b01;
-const Machine: Mode = 0b11;
 
 pub struct Cpu {
   pub regs: [u64; 32],
@@ -26,8 +22,6 @@ pub struct Cpu {
   /// up to 4096 CSRs.
   pub csr: Csr,
   pub ivt: HashMap<u64, Box<dyn InterruptHandler + Send>>,
-  /// The current privilege mode.
-  pub mode: Mode,
 }
 
 impl Cpu {
@@ -49,7 +43,6 @@ impl Cpu {
       bus,
       csr,
       ivt,
-      mode: Machine
     }
   }
 
@@ -66,7 +59,10 @@ impl Cpu {
   /// Get an instruction from the dram.
   pub fn fetch(&mut self) -> Result<u64, Exception> {
     trace!("fetching instruction...");
-    self.bus.load(self.pc, 32)
+    match self.bus.load(self.pc, 32) {
+      Ok(inst) => Ok(inst),
+      Err(_e) => Err(Exception::InstructionAccessFault(self.pc)),
+    }
   }
 
   pub fn dump_registers(&self) -> String {
@@ -98,6 +94,131 @@ impl Cpu {
       );
     }
     output
+  }
+
+  pub fn handle_exception(&mut self, exception: Exception) {
+    // the process to handle exception in S-mode and M-mode is similar,
+    // includes following steps:
+    // 0. set xPP to current mode.
+    // 1. update hart's privilege mode (M or S according to current mode and exception setting).
+    // 2. save current pc in epc (sepc in S-mode, mepc in M-mode)
+    // 3. set pc to trap vector (stvec in S-mode, mtvec in M-mode)
+    // 4. set cause to exception code (scause in S-mode, mcause in M-mode)
+    // 5. set trap value properly (stval in S-mode, mtval in M-mode)
+    // 6. set xPIE to xIE (SPIE in S-mode, MPIE in M-mode)
+    // 7. clear up xIE (SIE in S-mode, MIE in M-mode)
+    let pc = self.pc;
+    let cause = exception.code();
+
+    // 3.1.7 & 4.1.2
+    // The BASE field in tvec is a WARL field that can hold any valid virtual or physical address,
+    // subject to the following alignment constraints: the address must be 4-byte aligned
+    self.pc = self.csr.load(MTVEC) & !0b11;
+    // 3.1.14 & 4.1.7
+    // When a trap is taken into S-mode (or M-mode), sepc (or mepc) is written with the virtual address
+    // of the instruction that was interrupted or that encountered the exception.
+    self.csr.store(MEPC, pc);
+    // 3.1.15 & 4.1.8
+    // When a trap is taken into S-mode (or M-mode), scause (or mcause) is written with a code indicating
+    // the event that caused the trap.
+    self.csr.store(MCAUSE, cause);
+    // 3.1.16 & 4.1.9
+    // If stval is written with a nonzero value when a breakpoint, address-misaligned, access-fault, or
+    // page-fault exception occurs on an instruction fetch, load, or store, then stval will contain the
+    // faulting virtual address.
+    // If stval is written with a nonzero value when a misaligned load or store causes an access-fault or
+    // page-fault exception, then stval will contain the virtual address of the portion of the access that
+    // caused the fault
+    self.csr.store(MTVAL, exception.value());
+    // 3.1.6 covers both sstatus and mstatus.
+    let mut status = self.csr.load(MSTATUS);
+    // get SIE or MIE
+    let ie = (status & MASK_MIE) >> 3;
+    // set SPIE = SIE / MPIE = MIE
+    status = (status & !MASK_MPIE) | (ie << 7);
+    // set SIE = 0 / MIE = 0
+    status &= !MASK_MIE;
+    // set SPP / MPP = previous mode
+    status = (status & !MASK_MPP) | (3 << 11);
+    self.csr.store(MSTATUS, status);
+  }
+
+  pub fn handle_interrupt(&mut self, interrupt: Interrupt) {
+    // similar to handle exception
+    let pc = self.pc;
+    let cause = interrupt.code();
+
+    // 3.1.7 & 4.1.2
+    // When MODE=Direct, all traps into machine mode cause the pc to be set to the address in the BASE field.
+    // When MODE=Vectored, all synchronous exceptions into machine mode cause the pc to be set to the address
+    // in the BASE field, whereas interrupts cause the pc to be set to the address in the BASE field plus four
+    // times the interrupt cause number.
+    let tvec = self.csr.load(MTVEC);
+    let tvec_mode = tvec & 0b11;
+    let tvec_base = tvec & !0b11;
+    match tvec_mode { // Direct
+      0 => self.pc = tvec_base,
+      1 => self.pc = tvec_base + cause << 2,
+      _ => unreachable!(),
+    };
+    // 3.1.14 & 4.1.7
+    // When a trap is taken into S-mode (or M-mode), sepc (or mepc) is written with the virtual address
+    // of the instruction that was interrupted or that encountered the exception.
+    self.csr.store(MEPC, pc);
+    // 3.1.15 & 4.1.8
+    // When a trap is taken into S-mode (or M-mode), scause (or mcause) is written with a code indicating
+    // the event that caused the trap.
+    self.csr.store(MCAUSE, cause);
+    // 3.1.16 & 4.1.9
+    // When a trap is taken into M-mode, mtval is either set to zero or written with exception-specific
+    // information to assist software in handling the trap.
+    self.csr.store(MTVAL, 0);
+    // 3.1.6 covers both sstatus and mstatus.
+    let mut status = self.csr.load(MSTATUS);
+    // get SIE or MIE
+    let ie = (status & MASK_MIE) >> 3;
+    // set SPIE = SIE / MPIE = MIE
+    status = (status & !MASK_MPIE) | (ie << 7);
+    // set SIE = 0 / MIE = 0
+    status &= !MASK_MIE;
+    // set SPP / MPP = previous mode
+    status = (status & !MASK_MPP) | (3 << 11);
+    self.csr.store(MSTATUS, status);
+  }
+
+  pub fn check_pending_interrupt(&mut self) -> Option<Interrupt> {
+    use Interrupt::*;
+    // 3.1.9 & 4.1.3
+    // Multiple simultaneous interrupts destined for M-mode are handled in the following decreasing
+    // priority order: MEI, MSI, MTI, SEI, SSI, STI.
+    let pending = self.csr.load(MIE) & self.csr.load(MIP);
+
+    if (pending & MASK_MEIP) != 0 {
+      self.csr.store(MIP, self.csr.load(MIP) & !MASK_MEIP);
+      return Some(MachineExternalInterrupt);
+    }
+    if (pending & MASK_MSIP) != 0 {
+      self.csr.store(MIP, self.csr.load(MIP) & !MASK_MSIP);
+      return Some(MachineSoftwareInterrupt);
+    }
+    if (pending & MASK_MTIP) != 0 {
+      self.csr.store(MIP, self.csr.load(MIP) & !MASK_MTIP);
+      return Some(MachineTimerInterrupt);
+    }
+    if (pending & MASK_SEIP) != 0 {
+      self.csr.store(MIP, self.csr.load(MIP) & !MASK_SEIP);
+      return Some(SupervisorExternalInterrupt);
+    }
+    if (pending & MASK_SSIP) != 0 {
+      self.csr.store(MIP, self.csr.load(MIP) & !MASK_SSIP);
+      return Some(SupervisorSoftwareInterrupt);
+    }
+    if (pending & MASK_STIP) != 0 {
+      self.csr.store(MIP, self.csr.load(MIP) & !MASK_STIP);
+      return Some(SupervisorTimerInterrupt);
+    }
+
+    return None;
   }
 
   #[inline]
@@ -332,7 +453,6 @@ impl Cpu {
             return self.update_pc();
           }
           _ => Err(Exception::IllegalInstruction(inst)),
-
         }
       }
       0x33 => {
@@ -518,54 +638,8 @@ impl Cpu {
         match funct3 {
           0x0 => {
             match (rs2, funct7) {
-              (0x2, 0x8) => {
-                // sret
-                // When the SRET instruction is executed to return from the trap
-                // handler, the privilege level is set to user mode if the SPP
-                // bit is 0, or supervisor mode if the SPP bit is 1. The SPP bit
-                // is SSTATUS[8].
-                let mut sstatus = self.csr.load(SSTATUS);
-                self.mode = (sstatus & MASK_SPP) >> 8;
-                // The SPIE bit is SSTATUS[5] and the SIE bit is the SSTATUS[1]
-                let spie = (sstatus & MASK_SPIE) >> 5;
-                // set SIE = SPIE
-                sstatus = (sstatus & !MASK_SIE) | (spie << 1);
-                // set SPIE = 1
-                sstatus |= MASK_SPIE;
-                // set SPP the least privilege mode (u-mode)
-                sstatus &= !MASK_SPP;
-                self.csr.store(SSTATUS, sstatus);
-                // set the pc to CSRs[sepc].
-                // whenever IALIGN=32, bit sepc[1] is masked on reads so that it appears to be 0. This
-                // masking occurs also for the implicit read by the SRET instruction.
-                let new_pc = self.csr.load(SEPC) & !0b11;
-                return Ok(new_pc);
-              }
-              (0x2, 0x18) => {
-                // mret
-                let mut mstatus = self.csr.load(MSTATUS);
-                // MPP is two bits wide at MSTATUS[12:11]
-                self.mode = (mstatus & MASK_MPP) >> 11;
-                // The MPIE bit is MSTATUS[7] and the MIE bit is the MSTATUS[3].
-                let mpie = (mstatus & MASK_MPIE) >> 7;
-                // set MIE = MPIE
-                mstatus = (mstatus & !MASK_MIE) | (mpie << 3);
-                // set MPIE = 1
-                mstatus |= MASK_MPIE;
-                // set MPP the least privilege mode (u-mode)
-                mstatus &= !MASK_MPP;
-                // If MPP != M, sets MPRV=0
-                mstatus &= !MASK_MPRV;
-                self.csr.store(MSTATUS, mstatus);
-                // set the pc to CSRs[mepc].
-                let new_pc = self.csr.load(MEPC) & !0b11;
-                return Ok(new_pc);
-              }
-              (_, 0x9) => {
-                // sfence.vma
-                // Do nothing.
-                return self.update_pc();
-              }
+              // ECALL and EBREAK cause the receiving privilege mode’s epc register to be set to the address of
+              // the ECALL or EBREAK instruction itself, not the address of the following instruction.
               (0x0, 0x0) => {
                 // ecall
                 dbg!(self.dump_registers());
@@ -576,6 +650,16 @@ impl Cpu {
                 } else {
                   return Err(Exception::Breakpoint(num));
                 }
+                return self.update_pc();
+              }
+              (0x1, 0x0) => {
+                // ebreak
+                // Makes a request of the debugger bu raising a Breakpoint exception.
+                return Err(Exception::Breakpoint(self.pc));
+              }
+              (_, 0x9) => {
+                // sfence.vma
+                // Do nothing.
                 return self.update_pc();
               }
               _ => Err(Exception::IllegalInstruction(inst)),

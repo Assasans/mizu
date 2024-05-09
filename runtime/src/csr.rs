@@ -1,3 +1,7 @@
+pub const NUM_CSRS: usize = 4096;
+
+// Machine-level CSRs.
+/// Hardware thread ID.
 pub const MHARTID: usize = 0xf14;
 /// Machine status register.
 pub const MSTATUS: usize = 0x300;
@@ -66,15 +70,13 @@ pub const MASK_MBE: u64 = 1 << 37;
 pub const MASK_SD: u64 = 1 << 63;
 pub const MASK_SSTATUS: u64 = MASK_SIE | MASK_SPIE | MASK_UBE | MASK_SPP | MASK_FS | MASK_XS | MASK_SUM | MASK_MXR | MASK_UXL | MASK_SD;
 
-// MIP / SIP field mask
+// MIP / SIP field
 pub const MASK_SSIP: u64 = 1 << 1;
 pub const MASK_MSIP: u64 = 1 << 3;
 pub const MASK_STIP: u64 = 1 << 5;
 pub const MASK_MTIP: u64 = 1 << 7;
 pub const MASK_SEIP: u64 = 1 << 9;
 pub const MASK_MEIP: u64 = 1 << 11;
-
-const NUM_CSRS: usize = 4096;
 
 pub struct Csr {
   csrs: [u64; NUM_CSRS],
@@ -85,6 +87,28 @@ impl Csr {
     Self {
       csrs: [0; NUM_CSRS]
     }
+  }
+
+  pub fn dump_csrs(&self) {
+    println!("{:-^80}", "control status registers");
+    let output = format!(
+      "{}\n{}\n",
+      format!(
+        "mstatus = {:<#18x}  mtvec = {:<#18x}  mepc = {:<#18x}  mcause = {:<#18x}",
+        self.load(MSTATUS),
+        self.load(MTVEC),
+        self.load(MEPC),
+        self.load(MCAUSE),
+      ),
+      format!(
+        "sstatus = {:<#18x}  stvec = {:<#18x}  sepc = {:<#18x}  scause = {:<#18x}",
+        self.load(SSTATUS),
+        self.load(STVEC),
+        self.load(SEPC),
+        self.load(SCAUSE),
+      ),
+    );
+    println!("{}", output);
   }
 
   pub fn load(&self, addr: usize) -> u64 {
@@ -103,5 +127,15 @@ impl Csr {
       SSTATUS => self.csrs[MSTATUS] = (self.csrs[MSTATUS] & !MASK_SSTATUS) | (value & MASK_SSTATUS),
       _ => self.csrs[addr] = value,
     }
+  }
+
+  #[inline]
+  pub fn is_medelegated(&self, cause: u64) -> bool {
+    (self.csrs[MEDELEG].wrapping_shr(cause as u32) & 1) == 1
+  }
+
+  #[inline]
+  pub fn is_midelegated(&self, cause: u64) -> bool {
+    (self.csrs[MIDELEG].wrapping_shr(cause as u32) & 1) == 1
   }
 }

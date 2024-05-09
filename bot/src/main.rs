@@ -120,12 +120,16 @@ async fn handle_event(
         let inst = match cpu.fetch() {
           Ok(inst) => inst,
           Err(exception) => {
-            if let Exception::LoadAccessFault(0) = &exception {
+            cpu.handle_exception(exception);
+            if let Exception::InstructionAccessFault(0) = &exception {
+              break;
+            }
+            if exception.is_fatal() {
+              http.create_message(msg.channel_id).content(&format!("fetch failed: {:?}", exception))?.await?;
+              error!("fetch failed: {:?}", exception);
               break;
             }
 
-            http.create_message(msg.channel_id).content(&format!("fetch failed: {:?}", exception))?.await?;
-            error!("fetch failed: {:?}", exception);
             break;
           }
         };
@@ -133,11 +137,20 @@ async fn handle_event(
         match cpu.execute(inst).await {
           Ok(new_pc) => cpu.pc = new_pc,
           Err(exception) => {
-            http.create_message(msg.channel_id).content(&format!("execute failed: {:?}", exception))?.await?;
-            error!("execute failed: {:?}", exception);
+            cpu.handle_exception(exception);
+            if exception.is_fatal() {
+              http.create_message(msg.channel_id).content(&format!("execute failed: {:?}", exception))?.await?;
+              error!("execute failed: {:?}", exception);
+              break;
+            }
             break;
           }
         };
+
+        match cpu.check_pending_interrupt() {
+          Some(interrupt) => cpu.handle_interrupt(interrupt),
+          None => (),
+        }
       }
 
       http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\npc = 0x{:x}\n{}```", cpu.pc, cpu.dump_registers()))?.await?;
