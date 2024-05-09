@@ -7,6 +7,7 @@ target/
 hal/*
 !hal/Makefile
 !hal/*.c
+!hal/*.h
 !hal/*.s
 !hal/*.ld
 bot/temp

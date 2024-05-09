@@ -21,6 +21,7 @@ SECTIONS
 
   .stack (NOLOAD) :
   {
+    . = 0xffffffff80001000;
     . = ALIGN(8);
     . = . + STACK_SIZE;
     . = ALIGN(8);
