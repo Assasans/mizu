@@ -1,10 +1,12 @@
+use std::{ptr, slice};
 use std::ffi::CString;
 use std::mem::size_of;
-use std::{ptr, slice};
-use tracing::{debug, error};
+
+use tracing::{debug, error, trace};
+
 use crate::dram::Dram;
 use crate::exception::Exception;
-use crate::param::{DRAM_BASE, DRAM_END};
+use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END};
 
 pub struct Bus {
   pub dram: Dram,
@@ -16,7 +18,23 @@ impl Bus {
   }
 
   pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+    trace!("bus load at 0x{addr:x}");
     match addr {
+      CPUID_BASE..=CPUID_END => {
+        let offset = (addr - CPUID_BASE) as usize;
+        return match offset {
+          // name
+          0x0..=0x99 => {
+            let version = format!("mizu emulated risc-v runtime v{}", env!("CARGO_PKG_VERSION"));
+            let bytes = version.as_bytes();
+            if offset < bytes.len() {
+              return Ok(bytes[offset] as u64)
+            };
+            Ok(0)
+          }
+          _ => Err(Exception::LoadAccessFault(addr))
+        };
+      }
       DRAM_BASE..=DRAM_END => self.dram.load(addr, size),
       _ => {
         error!("invalid load at 0x{addr:x}");

@@ -1,8 +1,12 @@
 pub const NUM_CSRS: usize = 4096;
 
 // Machine-level CSRs.
+/// CPU description.
+pub const MCPUID: usize = 0xf00;
+/// Vendor ID and version number.
+pub const MIMPID: usize = 0xf01;
 /// Hardware thread ID.
-pub const MHARTID: usize = 0xf14;
+pub const MHARTID: usize = 0xf10;
 /// Machine status register.
 pub const MSTATUS: usize = 0x300;
 /// Machine exception delefation register.

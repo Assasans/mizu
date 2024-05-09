@@ -105,6 +105,7 @@ async fn handle_event(
         "compilation successful: ```x86asm\n{}```",
         if assembly.len() > 1600 { "; too long" } else { &assembly }
       ))?.await?;
+      debug!("{}", assembly);
 
       generate_rv_binary(&binary_filename).await;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
