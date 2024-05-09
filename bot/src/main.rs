@@ -1,3 +1,7 @@
+pub mod http;
+pub mod dump_performance;
+pub mod discord;
+
 use std::{env, mem};
 use std::error::Error;
 use std::ffi::{c_char, CString};
@@ -15,26 +19,20 @@ use tokio::{fs, task};
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
 use tracing_subscriber::{EnvFilter, fmt};
-use tracing_subscriber::fmt::format;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
-use twilight_gateway::{EventTypeFlags, Shard};
+use twilight_gateway::Shard;
 use twilight_http::Client;
-use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_model::channel::Channel;
-use twilight_model::channel::message::{MessageFlags, ReactionType};
 use twilight_model::gateway::{Intents, ShardId};
 use twilight_model::gateway::event::Event;
-use twilight_model::gateway::payload::incoming::MessageCreate;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker, StickerMarker};
 use twilight_standby::Standby;
-use runtime::bus::{Bus, BusMemoryExt};
-use runtime::cpu::{Cpu, InterruptHandler};
+use runtime::cpu::Cpu;
 use runtime::exception::Exception;
-use runtime::param::DRAM_BASE;
 use runtime::perf_counter::CPU_TIME_LIMIT;
+use crate::discord::DiscordInterruptHandler;
+use crate::dump_performance::DumpPerformanceHandler;
+use crate::http::HttpHandler;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -184,194 +182,6 @@ async fn handle_event(
   };
 
   Ok(())
-}
-
-struct DiscordInterruptHandler {
-  guild_id: Id<GuildMarker>,
-  channel_id: Id<ChannelMarker>,
-  standby: Arc<Standby>,
-  http: Arc<Client>,
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct discord_create_message_t {
-  pub channel_id: u64,
-  pub flags: u64,
-  pub reply: Option<NonZeroU64>,
-  pub stickers: [Option<NonZeroU64>; 3],
-  pub content: *const c_char,
-}
-
-unsafe impl Send for discord_create_message_t {}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct discord_create_reaction_t {
-  pub channel_id: u64,
-  pub message_id: u64,
-  pub emoji: *const c_char,
-}
-
-unsafe impl Send for discord_create_reaction_t {}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct discord_message_t {
-  pub id: u64,
-  pub channel_id: u64,
-  pub author_id: u64,
-  pub content: *const c_char,
-}
-
-unsafe impl Send for discord_message_t {}
-
-#[async_trait]
-impl InterruptHandler for DiscordInterruptHandler {
-  async fn handle(&self, cpu: &mut Cpu) {
-    let id = cpu.regs[10];
-    let address = cpu.regs[11];
-    debug!("discord call: id={} address=0x{:x}", id, address);
-
-    match id {
-      1 => {
-        let request = cpu.bus.read_struct::<discord_create_message_t>(address).unwrap();
-        debug!("request: {:?}", request);
-
-        let mut builder = self.http.create_message(Id::new(request.channel_id));
-
-        let content = if !request.content.is_null() {
-          Some(cpu.bus.read_string(request.content as u64).unwrap().to_string_lossy().to_string())
-        } else {
-          None
-        };
-        debug!("content: {:?}", content);
-        if let Some(content) = &content {
-          builder = builder.content(&content).unwrap();
-        }
-
-        builder = builder.flags(MessageFlags::from_bits(request.flags).unwrap());
-
-        let stickers = request.stickers.iter()
-          .filter_map(|it| *it)
-          .map(|it| Id::<StickerMarker>::from(it))
-          .collect::<Vec<_>>();
-        builder = builder.sticker_ids(&stickers).unwrap();
-
-        if let Some(reply) = request.reply {
-          builder = builder.reply(Id::from(reply));
-        }
-
-        let response = builder
-          .await.unwrap()
-          .model().await.unwrap();
-        cpu.regs[10] = response.id.get();
-      }
-      2 => {
-        let request = cpu.bus.read_struct::<discord_create_reaction_t>(address).unwrap();
-        debug!("request: {:?}", request);
-
-        self.http.create_reaction(
-          Id::new(request.channel_id),
-          Id::new(request.message_id),
-          &RequestReactionType::Unicode { name: cpu.bus.read_string(request.emoji as u64).unwrap().to_str().unwrap() },
-        ).await.unwrap();
-        cpu.regs[10] = 0;
-      }
-      10 => {
-        let message = self.standby.wait_for(self.guild_id, |event: &Event| {
-          if let Event::MessageCreate(message) = event {
-            !message.author.bot
-          } else {
-            false
-          }
-        }).await.unwrap();
-        let message = if let Event::MessageCreate(message) = message {
-          message
-        } else {
-          unreachable!()
-        };
-        debug!("got message: {:?}", message);
-
-        let ffi_message = discord_message_t {
-          id: message.id.get(),
-          channel_id: message.channel_id.get(),
-          author_id: message.author.id.get(),
-          content: (DRAM_BASE + 0x9900) as *const c_char,
-        };
-
-        cpu.bus.write_string(ffi_message.content as u64, &message.content).unwrap();
-        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
-        cpu.regs[10] = DRAM_BASE + 0x6000;
-      }
-      _ => unimplemented!()
-    }
-  }
-}
-
-struct DumpPerformanceHandler {
-  guild_id: Id<GuildMarker>,
-  channel_id: Id<ChannelMarker>,
-  standby: Arc<Standby>,
-  http: Arc<Client>,
-}
-
-#[async_trait]
-impl InterruptHandler for DumpPerformanceHandler {
-  async fn handle(&self, cpu: &mut Cpu) {
-    self.http.create_message(self.channel_id)
-      .content(&format!("performance dump: ```c\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers())).unwrap()
-      .await.unwrap();
-    cpu.perf.reset();
-  }
-}
-
-struct HttpHandler {
-  guild_id: Id<GuildMarker>,
-  channel_id: Id<ChannelMarker>,
-  standby: Arc<Standby>,
-  http: Arc<Client>,
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct http_request_t {
-  pub url: *const c_char
-}
-
-unsafe impl Send for http_request_t {}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct http_response_t {
-  pub status_code: u16,
-  pub body: *const c_char
-}
-
-unsafe impl Send for http_response_t {}
-
-#[async_trait]
-impl InterruptHandler for HttpHandler {
-  async fn handle(&self, cpu: &mut Cpu) {
-    let address = cpu.regs[10];
-    let request = cpu.bus.read_struct::<http_request_t>(address).unwrap();
-    debug!("request: {:?}", request);
-
-    let url = cpu.bus.read_string(request.url as u64).unwrap().to_string_lossy().to_string();
-    debug!("url: {}", url);
-
-    let client = reqwest::Client::new();
-    let response = client.request(Method::GET, url).send().await.unwrap();
-
-    let ffi_response = http_response_t {
-      status_code: response.status().as_u16(),
-      body: (DRAM_BASE + 0x9900) as *const c_char,
-    };
-
-    cpu.bus.write_string(ffi_response.body as u64, &response.text().await.unwrap()).unwrap();
-    cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_response).unwrap();
-    cpu.regs[10] = DRAM_BASE + 0x6000;
-  }
 }
 
 async fn generate_rv_obj(input: &str) -> (String, String) {
