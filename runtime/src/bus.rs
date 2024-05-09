@@ -38,6 +38,8 @@ pub trait BusMemoryExt {
   fn read(&mut self, addr: u64, len: u64) -> Result<Vec<u8>, Exception>;
   fn read_struct<T>(&mut self, addr: u64) -> Result<T, Exception>;
   fn read_string(&mut self, addr: u64) -> Result<CString, Exception>;
+
+  fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception>;
 }
 
 impl BusMemoryExt for Bus {
@@ -83,5 +85,15 @@ impl BusMemoryExt for Bus {
     }
 
     Ok(CString::from_vec_with_nul(data).unwrap())
+  }
+
+  fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception> {
+    let mut address = addr;
+    for byte in value.as_bytes() {
+      self.store(address, 8, *byte as u64).unwrap();
+      address += 1;
+    }
+    self.store(address, 8, 0).unwrap();
+    Ok(())
   }
 }

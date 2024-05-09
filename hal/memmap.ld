@@ -9,7 +9,14 @@ STACK_SIZE = 0x1000;
 
 SECTIONS
 {
-  .text   : { *(.text*)   } > rom
+  . = 0xffffffff80000000;
+
+  .text   :
+  {
+    *(.start)
+    *(.text*)
+  } > rom
+
   /* .rodata : { *(.rodata*) } > ram */
 
   .stack (NOLOAD) :

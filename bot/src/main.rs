@@ -1,7 +1,9 @@
 use std::{env, mem};
 use std::error::Error;
 use std::ffi::{c_char, CString};
+use std::marker::PhantomData;
 use std::mem::size_of;
+use std::num::NonZeroU64;
 use std::os::raw::c_uchar;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,15 +20,19 @@ use tracing_subscriber::util::SubscriberInitExt;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{EventTypeFlags, Shard};
 use twilight_http::Client;
+use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_model::channel::Channel;
-use twilight_model::channel::message::MessageFlags;
+use twilight_model::channel::message::{MessageFlags, ReactionType};
 use twilight_model::gateway::{Intents, ShardId};
 use twilight_model::gateway::event::Event;
+use twilight_model::gateway::payload::incoming::MessageCreate;
 use twilight_model::id::Id;
-use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::marker::{ChannelMarker, GuildMarker, StickerMarker};
+use twilight_standby::Standby;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::exception::Exception;
+use runtime::param::DRAM_BASE;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -54,6 +60,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     .resource_types(ResourceType::MESSAGE)
     .build();
 
+  let standby = Arc::new(Standby::new());
+
   // Startup the event loop to process each event in the event stream as they
   // come in.
   while let item = shard.next_event().await {
@@ -64,9 +72,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
     // Update the cache.
     cache.update(&event);
+    standby.process(&event);
 
     // Spawn a new task to handle the event
-    tokio::spawn(handle_event(event, Arc::clone(&http)));
+    tokio::spawn(handle_event(event, Arc::clone(&http), Arc::clone(&standby)));
   }
 
   Ok(())
@@ -75,6 +84,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 async fn handle_event(
   event: Event,
   http: Arc<Client>,
+  standby: Arc<Standby>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
   match event {
     Event::MessageCreate(msg) if msg.content.starts_with("!vm") => {
@@ -91,13 +101,18 @@ async fn handle_event(
       }
 
       let assembly = get_disassembled(&binary_filename).await;
-      http.create_message(msg.channel_id).content(&format!("compilation successful: ```x86asm\n{}```", assembly))?.await?;
+      http.create_message(msg.channel_id).content(&format!(
+        "compilation successful: ```x86asm\n{}```",
+        if assembly.len() > 1600 { "; too long" } else { &assembly }
+      ))?.await?;
 
       generate_rv_binary(&binary_filename).await;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
       let mut cpu = Cpu::new(code);
       cpu.ivt.insert(10, Box::new(DiscordInterruptHandler {
+        guild_id: msg.guild_id.unwrap(),
         channel_id: msg.channel_id,
+        standby: standby.clone(),
         http: http.clone(),
       }));
 
@@ -137,20 +152,33 @@ async fn handle_event(
 }
 
 struct DiscordInterruptHandler {
+  guild_id: Id<GuildMarker>,
   channel_id: Id<ChannelMarker>,
+  standby: Arc<Standby>,
   http: Arc<Client>,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct discord_create_message_t {
+  pub channel_id: u64,
   pub flags: u64,
-  pub reply: u64,
-  pub stickers: [u64; 1],
+  pub reply: Option<NonZeroU64>,
+  pub stickers: [Option<NonZeroU64>; 3],
   pub content: *const c_char,
 }
 
 unsafe impl Send for discord_create_message_t {}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct discord_create_reaction_t {
+  pub channel_id: u64,
+  pub message_id: u64,
+  pub emoji: *const c_char,
+}
+
+unsafe impl Send for discord_create_reaction_t {}
 
 #[async_trait]
 impl InterruptHandler for DiscordInterruptHandler {
@@ -164,17 +192,64 @@ impl InterruptHandler for DiscordInterruptHandler {
         let request = bus.read_struct::<discord_create_message_t>(address).unwrap();
         debug!("request: {:?}", request);
 
-        let content = bus.read_string(request.content as u64).unwrap().to_string_lossy().to_string();
-        debug!("content: {}", content);
+        let mut builder = self.http.create_message(Id::new(request.channel_id));
 
-        let response = self.http.create_message(self.channel_id)
-          .content(&content).unwrap()
-          .flags(MessageFlags::from_bits(request.flags).unwrap())
-          .sticker_ids(&request.stickers.map(|id| Id::new(id))).unwrap()
-          .reply(Id::new(request.reply))
+        let content = if !request.content.is_null() {
+          Some(bus.read_string(request.content as u64).unwrap().to_string_lossy().to_string())
+        } else {
+          None
+        };
+        debug!("content: {:?}", content);
+        if let Some(content) = &content {
+          builder = builder.content(&content).unwrap();
+        }
+
+        builder = builder.flags(MessageFlags::from_bits(request.flags).unwrap());
+
+        let stickers = request.stickers.iter()
+          .filter_map(|it| *it)
+          .map(|it| Id::<StickerMarker>::from(it))
+          .collect::<Vec<_>>();
+        builder = builder.sticker_ids(&stickers).unwrap();
+
+        if let Some(reply) = request.reply {
+          builder = builder.reply(Id::from(reply));
+        }
+
+        let response = builder
           .await.unwrap()
           .model().await.unwrap();
         regs[10] = response.id.get();
+      }
+      2 => {
+        let request = bus.read_struct::<discord_create_reaction_t>(address).unwrap();
+        debug!("request: {:?}", request);
+
+        self.http.create_reaction(
+          Id::new(request.channel_id),
+          Id::new(request.message_id),
+          &RequestReactionType::Unicode { name: bus.read_string(request.emoji as u64).unwrap().to_str().unwrap() },
+        ).await.unwrap();
+        regs[10] = 0;
+      }
+      10 => {
+        let message = self.standby.wait_for(self.guild_id, |event: &Event| {
+          if let Event::MessageCreate(message) = event {
+            !message.author.bot
+          } else {
+            false
+          }
+        }).await.unwrap();
+        let message = if let Event::MessageCreate(message) = message {
+          message
+        } else {
+          unreachable!()
+        };
+
+        debug!("got message: {:?}", message);
+        bus.write_string(DRAM_BASE + 0x6000, &message.content).unwrap();
+        regs[10] = message.channel_id.get();
+        regs[11] = DRAM_BASE + 0x6000;
       }
       _ => unimplemented!()
     }

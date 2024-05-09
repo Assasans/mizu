@@ -9,3 +9,4 @@ hal/*
 !hal/*.c
 !hal/*.s
 !hal/*.ld
+bot/temp
