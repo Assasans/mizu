@@ -37,9 +37,16 @@ typedef struct discord_create_reaction {
   const char* emoji;
 } discord_create_reaction_t;
 
+typedef struct discord_message {
+  unsigned long id;
+  unsigned long channel_id;
+  unsigned long author_id;
+  const char* content;
+} discord_message_t;
+
 void* memcpy(void *dst, const void *src, unsigned long n) {
-  unsigned char *d = (unsigned char*)dst;
-  unsigned char *s  = (unsigned char*)src;
+  unsigned char *d = dst;
+  const unsigned char *s = src;
   while(n--) {
     *d++ = *s++;
   }

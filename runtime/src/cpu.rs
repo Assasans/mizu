@@ -4,7 +4,7 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use tracing::{debug, trace};
 use crate::bus::Bus;
-use crate::csr::Csr;
+use crate::csr::{Csr, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_SIE, MASK_SPIE, MASK_SPP, MEPC, MSTATUS, SEPC, SSTATUS};
 use crate::exception::Exception;
 use crate::param::{DRAM_BASE, DRAM_SIZE};
 
@@ -12,6 +12,11 @@ use crate::param::{DRAM_BASE, DRAM_SIZE};
 pub trait InterruptHandler {
   async fn handle(&self, regs: &mut [u64; 32], bus: &mut Bus);
 }
+
+pub type Mode = u64;
+const User: Mode = 0b00;
+const Supervisor: Mode = 0b01;
+const Machine: Mode = 0b11;
 
 pub struct Cpu {
   pub regs: [u64; 32],
@@ -21,6 +26,8 @@ pub struct Cpu {
   /// up to 4096 CSRs.
   pub csr: Csr,
   pub ivt: HashMap<u64, Box<dyn InterruptHandler + Send>>,
+  /// The current privilege mode.
+  pub mode: Mode,
 }
 
 impl Cpu {
@@ -42,6 +49,7 @@ impl Cpu {
       bus,
       csr,
       ivt,
+      mode: Machine
     }
   }
 
@@ -289,6 +297,44 @@ impl Cpu {
           _ => unreachable!(),
         }
       }
+      0x2f => {
+        // RV64A: "A" standard extension for atomic instructions
+        let funct5 = (funct7 & 0b1111100) >> 2;
+        let _aq = (funct7 & 0b0000010) >> 1; // acquire access
+        let _rl = funct7 & 0b0000001; // release access
+        match (funct3, funct5) {
+          (0x2, 0x00) => {
+            // amoadd.w
+            let t = self.load(self.regs[rs1], 32)?;
+            self.store(self.regs[rs1], 32, t.wrapping_add(self.regs[rs2]))?;
+            self.regs[rd] = t;
+            return self.update_pc();
+          }
+          (0x3, 0x00) => {
+            // amoadd.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, t.wrapping_add(self.regs[rs2]))?;
+            self.regs[rd] = t;
+            return self.update_pc();
+          }
+          (0x2, 0x01) => {
+            // amoswap.w
+            let t = self.load(self.regs[rs1], 32)?;
+            self.store(self.regs[rs1], 32, self.regs[rs2])?;
+            self.regs[rd] = t;
+            return self.update_pc();
+          }
+          (0x3, 0x01) => {
+            // amoswap.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, self.regs[rs2])?;
+            self.regs[rd] = t;
+            return self.update_pc();
+          }
+          _ => Err(Exception::IllegalInstruction(inst)),
+
+        }
+      }
       0x33 => {
         // "SLL, SRL, and SRA perform logical left, logical right, and arithmetic right
         // shifts on the value in register rs1 by the shift amount held in register rs2.
@@ -471,16 +517,69 @@ impl Cpu {
         let csr_addr = ((inst & 0xfff00000) >> 20) as usize;
         match funct3 {
           0x0 => {
-            // ecall
-            dbg!(self.dump_registers());
-            let num = self.regs[17];
-            debug!("executing ecall {}", num);
-            if let Some(handler) = self.ivt.get(&num) {
-              handler.handle(&mut self.regs, &mut self.bus).await;
-            } else {
-              return Err(Exception::Breakpoint(num));
+            match (rs2, funct7) {
+              (0x2, 0x8) => {
+                // sret
+                // When the SRET instruction is executed to return from the trap
+                // handler, the privilege level is set to user mode if the SPP
+                // bit is 0, or supervisor mode if the SPP bit is 1. The SPP bit
+                // is SSTATUS[8].
+                let mut sstatus = self.csr.load(SSTATUS);
+                self.mode = (sstatus & MASK_SPP) >> 8;
+                // The SPIE bit is SSTATUS[5] and the SIE bit is the SSTATUS[1]
+                let spie = (sstatus & MASK_SPIE) >> 5;
+                // set SIE = SPIE
+                sstatus = (sstatus & !MASK_SIE) | (spie << 1);
+                // set SPIE = 1
+                sstatus |= MASK_SPIE;
+                // set SPP the least privilege mode (u-mode)
+                sstatus &= !MASK_SPP;
+                self.csr.store(SSTATUS, sstatus);
+                // set the pc to CSRs[sepc].
+                // whenever IALIGN=32, bit sepc[1] is masked on reads so that it appears to be 0. This
+                // masking occurs also for the implicit read by the SRET instruction.
+                let new_pc = self.csr.load(SEPC) & !0b11;
+                return Ok(new_pc);
+              }
+              (0x2, 0x18) => {
+                // mret
+                let mut mstatus = self.csr.load(MSTATUS);
+                // MPP is two bits wide at MSTATUS[12:11]
+                self.mode = (mstatus & MASK_MPP) >> 11;
+                // The MPIE bit is MSTATUS[7] and the MIE bit is the MSTATUS[3].
+                let mpie = (mstatus & MASK_MPIE) >> 7;
+                // set MIE = MPIE
+                mstatus = (mstatus & !MASK_MIE) | (mpie << 3);
+                // set MPIE = 1
+                mstatus |= MASK_MPIE;
+                // set MPP the least privilege mode (u-mode)
+                mstatus &= !MASK_MPP;
+                // If MPP != M, sets MPRV=0
+                mstatus &= !MASK_MPRV;
+                self.csr.store(MSTATUS, mstatus);
+                // set the pc to CSRs[mepc].
+                let new_pc = self.csr.load(MEPC) & !0b11;
+                return Ok(new_pc);
+              }
+              (_, 0x9) => {
+                // sfence.vma
+                // Do nothing.
+                return self.update_pc();
+              }
+              (0x0, 0x0) => {
+                // ecall
+                dbg!(self.dump_registers());
+                let num = self.regs[17];
+                debug!("executing ecall {}", num);
+                if let Some(handler) = self.ivt.get(&num) {
+                  handler.handle(&mut self.regs, &mut self.bus).await;
+                } else {
+                  return Err(Exception::Breakpoint(num));
+                }
+                return self.update_pc();
+              }
+              _ => Err(Exception::IllegalInstruction(inst)),
             }
-            return self.update_pc();
           }
           0x1 => {
             // csrrw

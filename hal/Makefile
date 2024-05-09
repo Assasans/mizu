@@ -3,5 +3,7 @@ hal.bin: hal.c memmap.ld Makefile
 	llvm-objcopy -O binary hal hal.bin
 	riscv64-unknown-elf-objdump -d --disassembler-color=on -S hal
 
+all: hal.bin
+
 clean:
 	rm -v hal hal.bin

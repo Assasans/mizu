@@ -1,6 +1,6 @@
 use std::ffi::CString;
 use std::mem::size_of;
-use std::ptr;
+use std::{ptr, slice};
 use tracing::{debug, error};
 use crate::dram::Dram;
 use crate::exception::Exception;
@@ -39,6 +39,8 @@ pub trait BusMemoryExt {
   fn read_struct<T>(&mut self, addr: u64) -> Result<T, Exception>;
   fn read_string(&mut self, addr: u64) -> Result<CString, Exception>;
 
+  fn write(&mut self, addr: u64, value: &[u8]) -> Result<(), Exception>;
+  fn write_struct<T>(&mut self, addr: u64, value: &T) -> Result<(), Exception>;
   fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception>;
 }
 
@@ -85,6 +87,22 @@ impl BusMemoryExt for Bus {
     }
 
     Ok(CString::from_vec_with_nul(data).unwrap())
+  }
+
+  fn write(&mut self, addr: u64, value: &[u8]) -> Result<(), Exception> {
+    let mut address = addr;
+    for byte in value {
+      self.store(address, 8, *byte as u64).unwrap();
+      address += 1;
+    }
+    Ok(())
+  }
+
+  fn write_struct<T>(&mut self, addr: u64, value: &T) -> Result<(), Exception> {
+    let bytes = unsafe {
+      slice::from_raw_parts((value as *const T) as *const u8, size_of::<T>())
+    };
+    self.write(addr, bytes)
   }
 
   fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception> {

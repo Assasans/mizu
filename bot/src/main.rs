@@ -180,6 +180,17 @@ pub struct discord_create_reaction_t {
 
 unsafe impl Send for discord_create_reaction_t {}
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct discord_message_t {
+  pub id: u64,
+  pub channel_id: u64,
+  pub author_id: u64,
+  pub content: *const c_char,
+}
+
+unsafe impl Send for discord_message_t {}
+
 #[async_trait]
 impl InterruptHandler for DiscordInterruptHandler {
   async fn handle(&self, regs: &mut [u64; 32], bus: &mut Bus) {
@@ -245,11 +256,18 @@ impl InterruptHandler for DiscordInterruptHandler {
         } else {
           unreachable!()
         };
-
         debug!("got message: {:?}", message);
-        bus.write_string(DRAM_BASE + 0x6000, &message.content).unwrap();
-        regs[10] = message.channel_id.get();
-        regs[11] = DRAM_BASE + 0x6000;
+
+        let ffi_message = discord_message_t {
+          id: message.id.get(),
+          channel_id: message.channel_id.get(),
+          author_id: message.author.id.get(),
+          content: (DRAM_BASE + 0x9900) as *const c_char,
+        };
+
+        bus.write_string(ffi_message.content as u64, &message.content).unwrap();
+        bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
+        regs[10] = DRAM_BASE + 0x6000;
       }
       _ => unimplemented!()
     }
