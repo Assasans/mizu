@@ -4,7 +4,8 @@ pub mod dram;
 pub mod param;
 pub mod exception;
 pub mod csr;
-mod interrupt;
+pub mod interrupt;
+pub mod perf_counter;
 
 #[cfg(test)]
 mod tests {

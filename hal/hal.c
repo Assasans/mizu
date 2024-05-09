@@ -1,5 +1,8 @@
 void _start() __attribute__((section(".start")));
 
+#define SYSCALL_DISCORD     10
+#define SYSCALL_PERF_DUMP   11
+
 inline void syscall(int num) {
   asm volatile(
     "li a7, %0\n"
@@ -12,7 +15,7 @@ inline unsigned long syscall_discord(int id, void* data) {
     "li a0, %0\n"
     "mv a1, %1" :: "i"(id), "r"(data) : "a0", "a1"
   );
-  syscall(10);
+  syscall(SYSCALL_DISCORD);
 
   unsigned long message_id;
   asm volatile("mv %0, a0" : "=r"(message_id));

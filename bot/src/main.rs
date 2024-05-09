@@ -33,6 +33,7 @@ use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::exception::Exception;
 use runtime::param::DRAM_BASE;
+use runtime::perf_counter::CPU_TIME_LIMIT;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -110,12 +111,18 @@ async fn handle_event(
       generate_rv_binary(&binary_filename).await;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
       let mut cpu = Cpu::new(code);
-      cpu.ivt.insert(10, Box::new(DiscordInterruptHandler {
+      cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
         guild_id: msg.guild_id.unwrap(),
         channel_id: msg.channel_id,
         standby: standby.clone(),
         http: http.clone(),
-      }));
+      })));
+      cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
+        guild_id: msg.guild_id.unwrap(),
+        channel_id: msg.channel_id,
+        standby: standby.clone(),
+        http: http.clone(),
+      })));
 
       loop {
         let inst = match cpu.fetch() {
@@ -147,6 +154,13 @@ async fn handle_event(
             break;
           }
         };
+        cpu.perf.instructions_retired += 1;
+
+        if cpu.perf.cpu_time > CPU_TIME_LIMIT {
+          error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
+          http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+          break;
+        }
 
         match cpu.check_pending_interrupt() {
           Some(interrupt) => cpu.handle_interrupt(interrupt),
@@ -154,7 +168,7 @@ async fn handle_event(
         }
       }
 
-      http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\npc = 0x{:x}\n{}```", cpu.pc, cpu.dump_registers()))?.await?;
+      http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers()))?.await?;
     }
     Event::Ready(_) => {
       info!("shard is ready");
@@ -207,20 +221,20 @@ unsafe impl Send for discord_message_t {}
 
 #[async_trait]
 impl InterruptHandler for DiscordInterruptHandler {
-  async fn handle(&self, regs: &mut [u64; 32], bus: &mut Bus) {
-    let id = regs[10];
-    let address = regs[11];
+  async fn handle(&self, cpu: &mut Cpu) {
+    let id = cpu.regs[10];
+    let address = cpu.regs[11];
     debug!("discord call: id={} address=0x{:x}", id, address);
 
     match id {
       1 => {
-        let request = bus.read_struct::<discord_create_message_t>(address).unwrap();
+        let request = cpu.bus.read_struct::<discord_create_message_t>(address).unwrap();
         debug!("request: {:?}", request);
 
         let mut builder = self.http.create_message(Id::new(request.channel_id));
 
         let content = if !request.content.is_null() {
-          Some(bus.read_string(request.content as u64).unwrap().to_string_lossy().to_string())
+          Some(cpu.bus.read_string(request.content as u64).unwrap().to_string_lossy().to_string())
         } else {
           None
         };
@@ -244,18 +258,18 @@ impl InterruptHandler for DiscordInterruptHandler {
         let response = builder
           .await.unwrap()
           .model().await.unwrap();
-        regs[10] = response.id.get();
+        cpu.regs[10] = response.id.get();
       }
       2 => {
-        let request = bus.read_struct::<discord_create_reaction_t>(address).unwrap();
+        let request = cpu.bus.read_struct::<discord_create_reaction_t>(address).unwrap();
         debug!("request: {:?}", request);
 
         self.http.create_reaction(
           Id::new(request.channel_id),
           Id::new(request.message_id),
-          &RequestReactionType::Unicode { name: bus.read_string(request.emoji as u64).unwrap().to_str().unwrap() },
+          &RequestReactionType::Unicode { name: cpu.bus.read_string(request.emoji as u64).unwrap().to_str().unwrap() },
         ).await.unwrap();
-        regs[10] = 0;
+        cpu.regs[10] = 0;
       }
       10 => {
         let message = self.standby.wait_for(self.guild_id, |event: &Event| {
@@ -279,12 +293,29 @@ impl InterruptHandler for DiscordInterruptHandler {
           content: (DRAM_BASE + 0x9900) as *const c_char,
         };
 
-        bus.write_string(ffi_message.content as u64, &message.content).unwrap();
-        bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
-        regs[10] = DRAM_BASE + 0x6000;
+        cpu.bus.write_string(ffi_message.content as u64, &message.content).unwrap();
+        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
+        cpu.regs[10] = DRAM_BASE + 0x6000;
       }
       _ => unimplemented!()
     }
+  }
+}
+
+struct DumpPerformanceHandler {
+  guild_id: Id<GuildMarker>,
+  channel_id: Id<ChannelMarker>,
+  standby: Arc<Standby>,
+  http: Arc<Client>,
+}
+
+#[async_trait]
+impl InterruptHandler for DumpPerformanceHandler {
+  async fn handle(&self, cpu: &mut Cpu) {
+    self.http.create_message(self.channel_id)
+      .content(&format!("performance dump: ```c\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers())).unwrap()
+      .await.unwrap();
+    cpu.perf.reset();
   }
 }
 
