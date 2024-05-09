@@ -2,6 +2,7 @@ void _start() __attribute__((section(".start")));
 
 #define SYSCALL_DISCORD     10
 #define SYSCALL_PERF_DUMP   11
+#define SYSCALL_HTTP        12
 
 inline void syscall(int num) {
   asm volatile(
@@ -49,6 +50,15 @@ typedef struct discord_message {
   unsigned long author_id;
   const char* content;
 } discord_message_t;
+
+typedef struct http_request {
+  const char* url;
+} http_request_t;
+
+typedef struct http_response {
+  const unsigned short status_code;
+  const char* body;
+} http_response_t;
 
 inline void* memcpy(void *dst, const void *src, unsigned long n) {
   unsigned char *d = dst;
