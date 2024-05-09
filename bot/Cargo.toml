@@ -1,0 +1,16 @@
+[package]
+name = "bot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.80"
+flume = "0.11.0"
+runtime = { path = "../runtime" }
+tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "io-util", "macros", "fs", "process"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+twilight-cache-inmemory = "0.15.4"
+twilight-gateway = "0.15.4"
+twilight-http = "0.15.4"
+twilight-model = "0.15.4"

@@ -1,0 +1,11 @@
+# IDEs
+.idea/
+.vscode/
+
+target/
+
+hal/*
+!hal/Makefile
+!hal/*.c
+!hal/*.s
+!hal/*.ld

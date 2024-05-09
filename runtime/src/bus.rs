@@ -1,0 +1,87 @@
+use std::ffi::CString;
+use std::mem::size_of;
+use std::ptr;
+use tracing::{debug, error};
+use crate::dram::Dram;
+use crate::exception::Exception;
+use crate::param::{DRAM_BASE, DRAM_END};
+
+pub struct Bus {
+  pub dram: Dram,
+}
+
+impl Bus {
+  pub fn new(code: Vec<u8>) -> Bus {
+    Self { dram: Dram::new(code) }
+  }
+
+  pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+    match addr {
+      DRAM_BASE..=DRAM_END => self.dram.load(addr, size),
+      _ => {
+        error!("invalid load at 0x{addr:x}");
+        Err(Exception::LoadAccessFault(addr))
+      }
+    }
+  }
+
+  pub fn store(&mut self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
+    debug!("writing {value:x} at {addr:x}");
+    match addr {
+      DRAM_BASE..=DRAM_END => self.dram.store(addr, size, value),
+      _ => Err(Exception::StoreAMOAccessFault(addr)),
+    }
+  }
+}
+
+pub trait BusMemoryExt {
+  fn read(&mut self, addr: u64, len: u64) -> Result<Vec<u8>, Exception>;
+  fn read_struct<T>(&mut self, addr: u64) -> Result<T, Exception>;
+  fn read_string(&mut self, addr: u64) -> Result<CString, Exception>;
+}
+
+impl BusMemoryExt for Bus {
+  fn read(&mut self, addr: u64, len: u64) -> Result<Vec<u8>, Exception> {
+    let mut result = Vec::with_capacity(len as usize);
+    let mut remaining = len;
+    let mut offset = 0;
+
+    while remaining > 0 {
+      let bytes_to_read = remaining.min(8);
+      let bits_to_read = bytes_to_read as u64 * 8;
+
+      let value = self.load(addr + offset, bits_to_read)?;
+
+      for i in 0..bytes_to_read {
+        let byte = ((value >> (i * 8)) & 0xFF) as u8;
+        result.push(byte);
+      }
+
+      remaining -= bytes_to_read;
+      offset += bytes_to_read;
+    }
+
+    Ok(result)
+  }
+
+  fn read_struct<T>(&mut self, addr: u64) -> Result<T, Exception> {
+    let bytes = self.read(addr, size_of::<T>() as u64)?;
+    assert_eq!(bytes.len(), size_of::<T>());
+    Ok(unsafe { ptr::read(bytes.as_ptr() as *const _) })
+  }
+
+  fn read_string(&mut self, addr: u64) -> Result<CString, Exception> {
+    let mut address = addr;
+    let mut data = Vec::new();
+    loop {
+      let byte = self.load(address, 8).unwrap() as u8;
+      data.push(byte);
+      if byte == 0 {
+        break;
+      }
+      address += 1;
+    }
+
+    Ok(CString::from_vec_with_nul(data).unwrap())
+  }
+}
