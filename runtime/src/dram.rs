@@ -16,7 +16,7 @@ impl Dram {
   // addr/size must be valid. Check in bus
   pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
     if ![8, 16, 32, 64].contains(&size) {
-      error!("unaligned load at 0x{addr:x}");
+      error!("unaligned load at 0x{addr:x}, {size}");
       return Err(Exception::LoadAccessFault(addr));
     }
     let nbytes = size / 8;

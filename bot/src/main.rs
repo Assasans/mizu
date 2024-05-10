@@ -1,6 +1,7 @@
 pub mod http;
 pub mod dump_performance;
 pub mod discord;
+pub mod object_storage;
 
 use std::{env, mem};
 use std::error::Error;
@@ -33,6 +34,7 @@ use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::DiscordInterruptHandler;
 use crate::dump_performance::DumpPerformanceHandler;
 use crate::http::HttpHandler;
+use crate::object_storage::{ObjectStorage, ObjectStorageHandler};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -62,6 +64,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
   let standby = Arc::new(Standby::new());
 
+  let object_storage = Arc::new(ObjectStorage::new());
+  object_storage.put("amongus", "да я люблю сосать член".as_bytes());
+
   // Startup the event loop to process each event in the event stream as they
   // come in.
   while let item = shard.next_event().await {
@@ -75,7 +80,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     standby.process(&event);
 
     // Spawn a new task to handle the event
-    tokio::spawn(handle_event(event, Arc::clone(&http), Arc::clone(&standby)));
+    tokio::spawn(handle_event(event, Arc::clone(&http), Arc::clone(&standby), Arc::clone(&object_storage)));
   }
 
   Ok(())
@@ -85,6 +90,7 @@ async fn handle_event(
   event: Event,
   http: Arc<Client>,
   standby: Arc<Standby>,
+  object_storage: Arc<ObjectStorage>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
   match event {
     Event::MessageCreate(msg) if msg.content.starts_with("!vm") => {
@@ -127,6 +133,13 @@ async fn handle_event(
         channel_id: msg.channel_id,
         standby: standby.clone(),
         http: http.clone(),
+      })));
+      cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
+        guild_id: msg.guild_id.unwrap(),
+        channel_id: msg.channel_id,
+        standby: standby.clone(),
+        http: http.clone(),
+        object_storage: object_storage.clone()
       })));
 
       loop {

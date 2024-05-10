@@ -28,7 +28,7 @@ impl Bus {
             let version = format!("mizu emulated risc-v runtime v{}", env!("CARGO_PKG_VERSION"));
             let bytes = version.as_bytes();
             if offset < bytes.len() {
-              return Ok(bytes[offset] as u64)
+              return Ok(bytes[offset] as u64);
             };
             Ok(0)
           }
@@ -62,6 +62,15 @@ pub trait BusMemoryExt {
   fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception>;
 }
 
+fn previous_power_of_two(value: u64) -> u64 {
+  let value = value | (value >> 1);
+  let value = value | (value >> 2);
+  let value = value | (value >> 4);
+  let value = value | (value >> 8);
+  let value = value | (value >> 16);
+  return value - (value >> 1);
+}
+
 impl BusMemoryExt for Bus {
   fn read(&mut self, addr: u64, len: u64) -> Result<Vec<u8>, Exception> {
     let mut result = Vec::with_capacity(len as usize);
@@ -70,7 +79,8 @@ impl BusMemoryExt for Bus {
 
     while remaining > 0 {
       let bytes_to_read = remaining.min(8);
-      let bits_to_read = bytes_to_read as u64 * 8;
+      let bytes_to_read = previous_power_of_two(bytes_to_read);
+      let bits_to_read = bytes_to_read * 8;
 
       let value = self.load(addr + offset, bits_to_read)?;
 

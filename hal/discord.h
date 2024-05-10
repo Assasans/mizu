@@ -28,6 +28,18 @@ typedef struct discord_message {
   const char* content;
 } discord_message_t;
 
+inline unsigned long syscall_discord(int id, void* data) {
+  asm volatile(
+    "li a0, %0\n"
+    "mv a1, %1" :: "i"(id), "r"(data) : "a0", "a1"
+  );
+  syscall(SYSCALL_DISCORD);
+
+  unsigned long message_id;
+  asm volatile("mv %0, a0" : "=r"(message_id) :: "a0");
+  return message_id;
+}
+
 inline discord_message_t* discord_poll() {
   syscall_discord(DISCORD_POLL_EVENT, 0);
   discord_message_t* message;
