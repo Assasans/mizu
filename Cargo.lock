@@ -751,6 +751,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mizu-hal"
+version = "0.1.0"
+
+[[package]]
 name = "nanorand"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1429,6 +1433,13 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "temp"
+version = "0.1.0"
+dependencies = [
+ "mizu-hal",
 ]
 
 [[package]]

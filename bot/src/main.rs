@@ -95,13 +95,24 @@ async fn handle_event(
   match event {
     Event::MessageCreate(msg) if msg.content.starts_with("!vm") => {
       let code = msg.content.trim_start_matches("!vm").trim_start();
-      let code = code.trim_start_matches("```").trim_start_matches("c\n").trim_end_matches("```").trim();
+      let code = code.trim_start_matches("```").trim_start_matches("rs\n").trim_end_matches("```").trim();
+      let code = format!(r#"#![feature(lang_items)]
+#![no_std]
+#![no_main]
+
+mod panic;
+mod prelude;
+
+use prelude::*;
+
+{}
+"#, code);
       debug!("running code: {}", code);
 
-      let code_filename = "bot/temp/main.c";
+      let code_filename = "temp/src/main.rs";
       fs::write(code_filename, code).await?;
-      let (binary_filename, compile_error) = generate_rv_obj(&code_filename).await;
-      if !compile_error.is_empty() {
+      let (binary_filename, compile_error, success) = generate_rv_obj().await;
+      if !success {
         http.create_message(msg.channel_id).content(&format!("compilation failed: ```c\n{}```", compile_error))?.await?;
         return Ok(());
       }
@@ -197,29 +208,19 @@ async fn handle_event(
   Ok(())
 }
 
-async fn generate_rv_obj(input: &str) -> (String, String) {
-  let hal_root = PathBuf::from(env::var("HAL_ROOT").unwrap());
-  let cc = "clang";
-  let pieces: Vec<&str> = input.split(".").collect();
-  let output = Command::new(cc)
+async fn generate_rv_obj() -> (String, String, bool) {
+  let output = Command::new("cargo")
+    .current_dir("temp")
     .args(&[
-      "-O1",
-      "-nostdlib",
-      "-march=rv64g",
-      "--target=riscv64",
-      "-mabi=lp64",
-      "-mno-relax",
-      &format!("-I{}", hal_root.to_str().unwrap()),
-      &format!("-Wl,-T{}", hal_root.join("memmap.ld").to_str().unwrap()),
-      "-o", &pieces[0],
-      input
+      "+nightly",
+      "build"
     ])
     .output()
     .await
     .expect("Failed to generate rv object");
   let stderr = String::from_utf8_lossy(&output.stderr);
   println!("{}", stderr);
-  (pieces[0].to_owned(), stderr.to_string())
+  ("target/riscv64g-unknown-mizu-elf/debug/temp".to_owned(), stderr.to_string(), output.status.success())
 }
 
 async fn generate_rv_binary(obj: &str) {
@@ -235,7 +236,7 @@ async fn generate_rv_binary(obj: &str) {
 async fn get_disassembled(obj: &str) -> String {
   let objcopy = "riscv64-unknown-elf-objdump";
   let output = Command::new(objcopy)
-    .args(&["-d", obj])
+    .args(&["-d", "--visualize-jumps", "-C", obj])
     .output()
     .await
     .expect("Failed to disassemble rv binary");

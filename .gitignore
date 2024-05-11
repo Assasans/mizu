@@ -11,3 +11,6 @@ hal/*
 !hal/*.s
 !hal/*.ld
 bot/temp
+
+# Secrets
+.env
