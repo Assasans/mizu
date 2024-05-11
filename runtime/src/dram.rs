@@ -1,16 +1,22 @@
-use tracing::error;
+use std::ops::Range;
+
+use tracing::{error, warn};
 use crate::exception::Exception;
 use crate::param::{DRAM_BASE, DRAM_SIZE};
 
 pub struct Dram {
   pub dram: Vec<u8>,
+  pub code_range: Range<u64>
 }
 
 impl Dram {
-  pub fn new(code: Vec<u8>) -> Dram {
+  pub fn new(code: Vec<u8>) -> Self {
     let mut dram = vec![0; DRAM_SIZE as usize];
     dram.splice(..code.len(), code.into_iter());
-    Self { dram }
+    Dram {
+      dram,
+      code_range: DRAM_BASE..DRAM_BASE + 0x4000
+    }
   }
 
   // addr/size must be valid. Check in bus
@@ -35,6 +41,12 @@ impl Dram {
     if ![8, 16, 32, 64].contains(&size) {
       return Err(Exception::StoreAMOAccessFault(addr));
     }
+
+    if self.code_range.contains(&addr) {
+      warn!("tried to overwrite code segment at 0x{:x} with 0x{:x}", addr, value);
+      return Err(Exception::StoreAMOAccessFault(addr));
+    }
+
     let nbytes = size / 8;
     let index = (addr - DRAM_BASE) as usize;
     for i in 0..nbytes {

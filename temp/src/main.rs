@@ -9,6 +9,6 @@ use prelude::*;
 
 #[link_section = ".start"]
 #[no_mangle]
-pub extern "C" fn _start() {
-  panic!("amongus");
+pub unsafe extern "C" fn _start() {
+  println!("cpuid: ==={}===", read_null_terminated_string_unchecked(CPUID_NAME));
 }

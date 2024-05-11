@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 use async_trait::async_trait;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 use crate::bus::Bus;
 use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SIE, MASK_SPIE, MASK_SPP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC, SATP, SCAUSE, SEPC, SSTATUS, STVAL, STVEC};
 use crate::exception::Exception;
@@ -34,7 +34,7 @@ impl Cpu {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
-    registers[2] = DRAM_BASE + 0x3000;
+    registers[2] = DRAM_BASE + 0x5000;
     debug!("initialized sp=0x{:x}", registers[2]);
 
     let pc = DRAM_BASE;
