@@ -3,6 +3,7 @@ pub mod dump_performance;
 pub mod discord;
 pub mod object_storage;
 pub mod log;
+pub mod halt;
 
 use std::{env, mem};
 use std::error::Error;
@@ -34,6 +35,7 @@ use runtime::exception::Exception;
 use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::DiscordInterruptHandler;
 use crate::dump_performance::DumpPerformanceHandler;
+use crate::halt::HaltHandler;
 use crate::http::HttpHandler;
 use crate::log::LogHandler;
 use crate::object_storage::{ObjectStorage, ObjectStorageHandler};
@@ -160,6 +162,7 @@ use prelude::*;
         standby: standby.clone(),
         http: http.clone(),
       })));
+      cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
 
       loop {
         let inst = match cpu.fetch() {
@@ -192,6 +195,9 @@ use prelude::*;
           }
         };
         cpu.perf.instructions_retired += 1;
+        if cpu.halt {
+          break;
+        }
 
         if cpu.perf.cpu_time > CPU_TIME_LIMIT {
           error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
@@ -205,7 +211,11 @@ use prelude::*;
         }
       }
 
-      http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers()))?.await?;
+      if cpu.halt {
+        http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers()))?.await?;
+      } else {
+        http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers()))?.await?;
+      }
     }
     Event::Ready(_) => {
       info!("shard is ready");

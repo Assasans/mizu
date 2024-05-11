@@ -9,6 +9,7 @@ pub const SYSCALL_PERF_DUMP: u64 = 11;
 pub const SYSCALL_HTTP: u64 = 12;
 pub const SYSCALL_OBJECT_STORAGE: u64 = 13;
 pub const SYSCALL_LOG: u64 = 14;
+pub const SYSCALL_HALT: u64 = 15;
 
 #[inline(always)]
 pub unsafe fn syscall(number: u64) {
@@ -23,6 +24,13 @@ pub fn performance_dump() {
   // SAFETY: Safe :)
   // No register changes needed
   unsafe { syscall(SYSCALL_PERF_DUMP); }
+}
+
+pub fn halt() -> ! {
+  // SAFETY: Safe :)
+  // No register changes needed
+  unsafe { syscall(SYSCALL_HALT); }
+  loop {}
 }
 
 pub fn debug_log(message: &str) {

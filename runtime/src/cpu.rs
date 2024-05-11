@@ -26,6 +26,7 @@ pub struct Cpu {
   pub csr: Csr,
   pub ivt: HashMap<u64, Arc<Box<dyn InterruptHandler>>>,
   pub perf: PerformanceCounter,
+  pub halt: bool
 }
 
 impl Cpu {
@@ -49,6 +50,7 @@ impl Cpu {
       csr,
       ivt,
       perf,
+      halt: false
     }
   }
 

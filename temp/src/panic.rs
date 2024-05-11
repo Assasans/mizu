@@ -1,6 +1,6 @@
 use core::fmt::Write;
 
-use mizu_hal::debug::Writer;
+use mizu_hal::{debug::Writer, halt};
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -8,5 +8,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
   writer.write_fmt(format_args!("{}", info)).unwrap();
   writer.flush();
 
-  loop {}
+  halt();
 }
