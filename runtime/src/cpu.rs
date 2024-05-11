@@ -33,7 +33,7 @@ impl Cpu {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
-    registers[2] = DRAM_BASE + 0x1000;
+    registers[2] = DRAM_BASE + 0x3000;
     debug!("initialized sp=0x{:x}", registers[2]);
 
     let pc = DRAM_BASE;
@@ -64,7 +64,7 @@ impl Cpu {
 
   /// Get an instruction from the dram.
   pub fn fetch(&mut self) -> Result<u64, Exception> {
-    trace!("fetching instruction...");
+    // trace!("fetching instruction...");
     match self.bus.load(self.pc, 32) {
       Ok(inst) => Ok(inst),
       Err(_e) => Err(Exception::InstructionAccessFault(self.pc)),
@@ -244,8 +244,7 @@ impl Cpu {
     // Emulate that register x0 is hardwired with all bits equal to 0.
     self.regs[0] = 0;
 
-    trace!("pc=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}", self.pc);
-    trace!("sp=0x{:x}", self.regs[2]);
+    trace!("pc=0x{:x} sp=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}", self.pc, self.regs[2]);
 
     // let opcode = Opcode::from(opcode);
     // trace!("executing opcode {:?}", opcode);
@@ -319,7 +318,6 @@ impl Cpu {
         match funct3 {
           0x0 => {
             // addi
-            debug!("addi {} - {}", self.regs[rs1], imm);
             self.regs[rd] = self.regs[rs1].wrapping_add(imm);
             self.perf.end_cpu_time();
             return self.update_pc();
@@ -440,7 +438,6 @@ impl Cpu {
         let addr = self.regs[rs1].wrapping_add(imm);
         match funct3 {
           0x0 => {
-            debug!("store 8 bits at 0x{addr:x} (0x{:x} [x{rs1}] + 0x{:x})", self.regs[rs1], imm);
             self.store(addr, 8, self.regs[rs2])?;
             self.perf.end_cpu_time();
             self.update_pc()

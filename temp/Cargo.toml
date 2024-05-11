@@ -5,3 +5,9 @@ edition = "2021"
 
 [dependencies]
 mizu-hal = { path = "../hal-rs" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

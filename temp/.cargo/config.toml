@@ -7,4 +7,4 @@ build-std = ["core", "compiler_builtins", "alloc"]
 [target.riscv64g-unknown-mizu-elf]
 rustflags = ["-C", "link-arg=-Ttemp/link.x", "-C", "target-feature=-c", "-Copt-level=1"]
 linker = "ld.lld"
-runner = ["riscv64-unknown-elf-objdump", "--disassemble", "--disassembler-color=terminal", "--visualize-jumps=color"]
+runner = ["riscv64-unknown-elf-objdump", "--disassemble", "--disassembler-color=terminal", "--visualize-jumps=color", "-C"]

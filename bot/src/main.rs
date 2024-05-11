@@ -2,6 +2,7 @@ pub mod http;
 pub mod dump_performance;
 pub mod discord;
 pub mod object_storage;
+pub mod log;
 
 use std::{env, mem};
 use std::error::Error;
@@ -34,6 +35,7 @@ use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::DiscordInterruptHandler;
 use crate::dump_performance::DumpPerformanceHandler;
 use crate::http::HttpHandler;
+use crate::log::LogHandler;
 use crate::object_storage::{ObjectStorage, ObjectStorageHandler};
 
 #[tokio::main]
@@ -122,7 +124,7 @@ use prelude::*;
         "compilation successful: ```x86asm\n{}```",
         if assembly.len() > 1600 { "; too long" } else { &assembly }
       ))?.await?;
-      debug!("{}", assembly);
+      // debug!("{}", assembly);
 
       generate_rv_binary(&binary_filename).await;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
@@ -151,6 +153,12 @@ use prelude::*;
         standby: standby.clone(),
         http: http.clone(),
         object_storage: object_storage.clone()
+      })));
+      cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
+        guild_id: msg.guild_id.unwrap(),
+        channel_id: msg.channel_id,
+        standby: standby.clone(),
+        http: http.clone(),
       })));
 
       loop {
