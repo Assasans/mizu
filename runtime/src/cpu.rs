@@ -174,7 +174,6 @@ impl Cpu {
       1 => self.pc = tvec_base + (cause << 2),
       _ => unreachable!(),
     };
-    self.pc -= 4;
     debug!("interrupt handler at 0x{:x}, base: 0x{:x}, mode: {}, cause offset: 0x{:x}, pc: 0x{:x}", self.pc, tvec_base, tvec_mode, cause << 2, pc);
     // 3.1.14 & 4.1.7
     // When a trap is taken into S-mode (or M-mode), sepc (or mepc) is written with the virtual address
@@ -767,8 +766,9 @@ impl Cpu {
                 }
 
                 // Restore registers
-                self.regs.copy_from_slice(&self.saved_regs);
-                self.saved_regs.fill(0);
+                self.regs.swap_with_slice(&mut self.saved_regs);
+                // self.regs.copy_from_slice(&self.saved_regs);
+                // self.saved_regs.fill(0);
 
                 debug!("trap exit: 0x{:x} -> 0x{:x}", self.pc, self.csr.load(MEPC));
                 self.pc = self.csr.load(MEPC);
@@ -787,7 +787,8 @@ impl Cpu {
                 self.csr.store(MSTATUS, status);
 
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                return Ok(self.pc);
+                // return self.update_pc();
               }
               (_, 0x9) => {
                 // sfence.vma

@@ -2,6 +2,7 @@
 
 pub mod debug;
 pub mod print;
+pub mod alloc;
 
 use core::{arch::asm, ffi::{c_char, c_void}, ptr};
 
