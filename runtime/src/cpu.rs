@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
+use std::ops::{Div, Rem};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
@@ -542,6 +543,12 @@ impl Cpu {
             self.perf.end_cpu_time();
             return self.update_pc();
           }
+          (0x1, 0x01) => {
+            // mulh
+            self.regs[rd] = ((self.regs[rs1] as i128).wrapping_mul(self.regs[rs2] as i128) >> 64) as u64;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
           (0x2, 0x00) => {
             // slt
             self.regs[rd] = if (self.regs[rs1] as i64) < (self.regs[rs2] as i64) { 1 } else { 0 };
@@ -572,6 +579,12 @@ impl Cpu {
             self.perf.end_cpu_time();
             return self.update_pc();
           }
+          (0x5, 0x01) => {
+            // divu
+            self.regs[rd] = self.regs[rs1].wrapping_div(self.regs[rs2]);
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
           (0x5, 0x20) => {
             // sra
             self.regs[rd] = (self.regs[rs1] as i64).wrapping_shr(shamt) as u64;
@@ -587,6 +600,12 @@ impl Cpu {
           (0x7, 0x00) => {
             // and
             self.regs[rd] = self.regs[rs1] & self.regs[rs2];
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x7, 0x01) => {
+            // remu
+            self.regs[rd] = self.regs[rs1].wrapping_rem(self.regs[rs2]);
             self.perf.end_cpu_time();
             return self.update_pc();
           }
@@ -627,6 +646,12 @@ impl Cpu {
           (0x5, 0x00) => {
             // srlw
             self.regs[rd] = (self.regs[rs1] as u32).wrapping_shr(shamt) as i32 as u64;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x5, 0x1) => {
+            // divuw
+            self.regs[rd] = (self.regs[rs1] as u32).wrapping_div(self.regs[rs2] as u32) as u64;
             self.perf.end_cpu_time();
             return self.update_pc();
           }
