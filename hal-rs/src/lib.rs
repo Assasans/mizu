@@ -3,6 +3,7 @@
 pub mod debug;
 pub mod print;
 pub mod alloc;
+pub mod rand;
 
 use core::{arch::asm, ffi::{c_char, c_void}, ptr};
 

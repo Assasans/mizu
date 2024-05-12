@@ -2,11 +2,12 @@ use std::{ptr, slice};
 use std::ffi::CString;
 use std::mem::size_of;
 
+use rand::{thread_rng, Rng, RngCore};
 use tracing::{debug, error, trace};
 
 use crate::dram::Dram;
 use crate::exception::Exception;
-use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END};
+use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END, RANDOM_BASE, RANDOM_END};
 
 pub struct Bus {
   pub dram: Dram,
@@ -34,6 +35,11 @@ impl Bus {
           }
           _ => Err(Exception::LoadAccessFault(addr))
         };
+      }
+      RANDOM_BASE..=RANDOM_END => {
+        let mut random = [0u8; 8];
+        thread_rng().fill_bytes(&mut random[..(size / 8) as usize]);
+        Ok(u64::from_le_bytes(random))
       }
       DRAM_BASE..=DRAM_END => self.dram.load(addr, size),
       _ => {

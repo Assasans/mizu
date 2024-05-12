@@ -753,6 +753,9 @@ dependencies = [
 [[package]]
 name = "mizu-hal"
 version = "0.1.0"
+dependencies = [
+ "rand_core",
+]
 
 [[package]]
 name = "nanorand"
@@ -1137,6 +1140,7 @@ name = "runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "rand",
  "tokio",
  "tracing",
  "tracing-subscriber",
