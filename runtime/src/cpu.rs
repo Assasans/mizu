@@ -19,6 +19,7 @@ pub trait InterruptHandler: Send + Sync {
 
 pub struct Cpu {
   pub regs: [u64; 32],
+  pub saved_regs: [u64; 32],
   pub pc: u64,
   pub bus: Bus,
   /// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
@@ -45,6 +46,7 @@ impl Cpu {
 
     Cpu {
       regs: registers,
+      saved_regs: [0; 32],
       pc,
       bus,
       csr,
@@ -147,7 +149,7 @@ impl Cpu {
     // set SIE = 0 / MIE = 0
     status &= !MASK_MIE;
     // set SPP / MPP = previous mode
-    status = (status & !MASK_MPP) | (3 << 11);
+    status = (status & !MASK_MPP) | (0b11 << 11);
     self.csr.store(MSTATUS, status);
   }
 
@@ -155,6 +157,9 @@ impl Cpu {
     // similar to handle exception
     let pc = self.pc;
     let cause = interrupt.code();
+
+    // Save registers
+    self.saved_regs.copy_from_slice(&self.regs);
 
     // 3.1.7 & 4.1.2
     // When MODE=Direct, all traps into machine mode cause the pc to be set to the address in the BASE field.
@@ -166,9 +171,11 @@ impl Cpu {
     let tvec_base = tvec & !0b11;
     match tvec_mode { // Direct
       0 => self.pc = tvec_base,
-      1 => self.pc = tvec_base + cause << 2,
+      1 => self.pc = tvec_base + (cause << 2),
       _ => unreachable!(),
     };
+    self.pc -= 4;
+    debug!("interrupt handler at 0x{:x}, base: 0x{:x}, mode: {}, cause offset: 0x{:x}, pc: 0x{:x}", self.pc, tvec_base, tvec_mode, cause << 2, pc);
     // 3.1.14 & 4.1.7
     // When a trap is taken into S-mode (or M-mode), sepc (or mepc) is written with the virtual address
     // of the instruction that was interrupted or that encountered the exception.
@@ -190,7 +197,7 @@ impl Cpu {
     // set SIE = 0 / MIE = 0
     status &= !MASK_MIE;
     // set SPP / MPP = previous mode
-    status = (status & !MASK_MPP) | (3 << 11);
+    // status = (status & !MASK_MPP) | (3 << 11);
     self.csr.store(MSTATUS, status);
   }
 
@@ -246,7 +253,7 @@ impl Cpu {
     // Emulate that register x0 is hardwired with all bits equal to 0.
     self.regs[0] = 0;
 
-    trace!("pc=0x{:x} sp=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}", self.pc, self.regs[2]);
+    trace!("pc=0x{:x} ra=0x{:x} sp=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}", self.pc, self.regs[1], self.regs[2]);
 
     // let opcode = Opcode::from(opcode);
     // trace!("executing opcode {:?}", opcode);
@@ -704,6 +711,7 @@ impl Cpu {
 
         let imm = ((((inst & 0xfff00000) as i32) as i64) >> 20) as u64;
         let new_pc = (self.regs[rs1].wrapping_add(imm)) & !1;
+        debug!("ret 0x{imm:x} -> 0x{new_pc:x} read from {}", rs1);
 
         self.regs[rd] = t;
         self.perf.end_cpu_time();
@@ -740,7 +748,7 @@ impl Cpu {
                   handler.handle(self).await;
                   self.perf.start_cpu_time();
                 } else {
-                  return Err(Exception::Breakpoint(num));
+                  return Err(Exception::RuntimeFault(num));
                 }
                 self.perf.end_cpu_time();
                 return self.update_pc();
@@ -750,6 +758,36 @@ impl Cpu {
                 // Makes a request of the debugger bu raising a Breakpoint exception.
                 self.perf.end_cpu_time();
                 return Err(Exception::Breakpoint(self.pc));
+              }
+              (0x2, 0x18) => {
+                // mret
+                if self.csr.load(MCAUSE) == 0 {
+                  self.perf.end_cpu_time();
+                  return Err(Exception::RuntimeFault(333));
+                }
+
+                // Restore registers
+                self.regs.copy_from_slice(&self.saved_regs);
+                self.saved_regs.fill(0);
+
+                debug!("trap exit: 0x{:x} -> 0x{:x}", self.pc, self.csr.load(MEPC));
+                self.pc = self.csr.load(MEPC);
+                self.csr.store(MEPC, 0);
+                self.csr.store(MCAUSE, 0);
+                self.csr.store(MTVAL, 0);
+
+                // TODO(Assasans): I have no idea what to do with MSTATUS
+                let mut status = self.csr.load(MSTATUS);
+
+                let ie = (status & MASK_MPIE) >> 7;
+                // set MIE = MPIE
+                status = (status & !MASK_MIE) | (ie << 3);
+                // set MPIE = 0
+                status &= !MASK_MPIE;
+                self.csr.store(MSTATUS, status);
+
+                self.perf.end_cpu_time();
+                return self.update_pc();
               }
               (_, 0x9) => {
                 // sfence.vma

@@ -101,6 +101,8 @@ async fn handle_event(
       let code = msg.content.trim_start_matches("!vm").trim_start();
       let code = code.trim_start_matches("```").trim_start_matches("rs\n").trim_end_matches("```").trim();
       let code = format!(r#"#![feature(lang_items)]
+#![feature(naked_functions)]
+
 #![no_std]
 #![no_main]
 
@@ -212,9 +214,9 @@ use prelude::*;
       }
 
       if cpu.halt {
-        http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers()))?.await?;
+        http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
       } else {
-        http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers()))?.await?;
+        http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
       }
     }
     Event::Ready(_) => {

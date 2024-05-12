@@ -14,6 +14,8 @@ SECTIONS
   .text   :
   {
     *(.start)
+    . = 0xffffffff80000200;
+    KEEP(*(.text.ivt))
     *(.text*)
   } > rom
 

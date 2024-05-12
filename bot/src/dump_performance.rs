@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
+use runtime::interrupt::Interrupt;
 use twilight_http::Client;
 use twilight_model::id::Id;
 use twilight_model::id::marker::{ChannelMarker, GuildMarker};
@@ -20,5 +21,7 @@ impl InterruptHandler for DumpPerformanceHandler {
       .content(&format!("performance dump: ```c\nperf={:?}\npc = 0x{:x}{}```", cpu.perf, cpu.pc, cpu.dump_registers())).unwrap()
       .await.unwrap();
     cpu.perf.reset();
+
+    cpu.handle_interrupt(Interrupt::PlatformDefined16);
   }
 }

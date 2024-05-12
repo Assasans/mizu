@@ -93,10 +93,9 @@ impl Csr {
     }
   }
 
-  pub fn dump_csrs(&self) {
-    println!("{:-^80}", "control status registers");
-    let output = format!(
-      "{}\n{}\n",
+  pub fn dump_csrs(&self) -> String {
+    format!(
+      "// control status registers\n{}\n{}\n",
       format!(
         "mstatus = {:<#18x}  mtvec = {:<#18x}  mepc = {:<#18x}  mcause = {:<#18x}",
         self.load(MSTATUS),
@@ -111,8 +110,7 @@ impl Csr {
         self.load(SEPC),
         self.load(SCAUSE),
       ),
-    );
-    println!("{}", output);
+    )
   }
 
   pub fn load(&self, addr: usize) -> u64 {

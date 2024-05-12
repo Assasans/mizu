@@ -16,6 +16,7 @@ pub enum Exception {
   #[deprecated] InstructionPageFault(u64),
   #[deprecated] LoadPageFault(u64),
   #[deprecated] StoreAMOPageFault(u64),
+  RuntimeFault(u64),
 }
 
 impl fmt::Display for Exception {
@@ -36,6 +37,7 @@ impl fmt::Display for Exception {
       InstructionPageFault(addr) => write!(f, "Instruction page fault {:#x}", addr),
       LoadPageFault(addr) => write!(f, "Load page fault {:#x}", addr),
       StoreAMOPageFault(addr) => write!(f, "Store or AMO page fault {:#x}", addr),
+      RuntimeFault(addr) => write!(f, "Runtime fault {:#x}", addr),
     }
   }
 }
@@ -59,6 +61,7 @@ impl Exception {
       InstructionPageFault(addr) => addr,
       LoadPageFault(addr) => addr,
       StoreAMOPageFault(addr) => addr,
+      RuntimeFault(addr) => addr,
     }
   }
 
@@ -79,6 +82,7 @@ impl Exception {
       InstructionPageFault(_) => 12,
       LoadPageFault(_) => 13,
       StoreAMOPageFault(_) => 15,
+      RuntimeFault(_) => 16,
     }
   }
 
@@ -90,7 +94,8 @@ impl Exception {
       | LoadAccessFault(_)
       | StoreAMOAddrMisaligned(_)
       | StoreAMOAccessFault(_)
-      | IllegalInstruction(_) => true,
+      | IllegalInstruction(_)
+      | RuntimeFault(_) => true,
       _else => false,
     }
   }
