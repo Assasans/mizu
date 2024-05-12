@@ -1,7 +1,7 @@
 use std::ffi::c_char;
-use std::num::NonZeroU64;
 use std::sync::Arc;
 use async_trait::async_trait;
+use hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_message_t};
 use tracing::debug;
 use twilight_http::Client;
 use twilight_http::request::channel::reaction::RequestReactionType;
@@ -21,39 +21,6 @@ pub struct DiscordInterruptHandler {
   pub http: Arc<Client>,
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub struct discord_create_message_t {
-  pub channel_id: u64,
-  pub flags: u64,
-  pub reply: Option<NonZeroU64>,
-  pub stickers: [Option<NonZeroU64>; 3],
-  pub content: *const c_char,
-}
-
-unsafe impl Send for discord_create_message_t {}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct discord_create_reaction_t {
-  pub channel_id: u64,
-  pub message_id: u64,
-  pub emoji: *const c_char,
-}
-
-unsafe impl Send for discord_create_reaction_t {}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct discord_message_t {
-  pub id: u64,
-  pub channel_id: u64,
-  pub author_id: u64,
-  pub content: *const c_char,
-}
-
-unsafe impl Send for discord_message_t {}
-
 #[async_trait]
 impl InterruptHandler for DiscordInterruptHandler {
   async fn handle(&self, cpu: &mut Cpu) {
@@ -62,7 +29,7 @@ impl InterruptHandler for DiscordInterruptHandler {
     debug!("discord call: id={} address=0x{:x}", id, address);
 
     match id {
-      1 => {
+      action::CREATE_MESSAGE => {
         let request = cpu.bus.read_struct::<discord_create_message_t>(address).unwrap();
         debug!("request: {:?}", request);
 
@@ -93,9 +60,19 @@ impl InterruptHandler for DiscordInterruptHandler {
         let response = builder
           .await.unwrap()
           .model().await.unwrap();
-        cpu.regs[10] = response.id.get();
+
+        let ffi_message = discord_message_t {
+          id: response.id.get(),
+          channel_id: response.channel_id.get(),
+          author_id: response.author.id.get(),
+          content: (DRAM_BASE + 0x9900) as *const c_char,
+        };
+
+        cpu.bus.write_string(ffi_message.content as u64, &response.content).unwrap();
+        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
+        cpu.regs[10] = DRAM_BASE + 0x6000;
       }
-      2 => {
+      action::CREATE_REACTION => {
         let request = cpu.bus.read_struct::<discord_create_reaction_t>(address).unwrap();
         debug!("request: {:?}", request);
 

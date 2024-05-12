@@ -201,11 +201,11 @@ use prelude::*;
           break;
         }
 
-        // if cpu.perf.cpu_time > CPU_TIME_LIMIT {
-        //   error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
-        //   http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
-        //   break;
-        // }
+        if cpu.perf.cpu_time > CPU_TIME_LIMIT {
+          error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
+          http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+          break;
+        }
 
         match cpu.check_pending_interrupt() {
           Some(interrupt) => cpu.handle_interrupt(interrupt),

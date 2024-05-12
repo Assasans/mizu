@@ -4,5 +4,6 @@ members = [
   "runtime",
   "bot",
   "hal-rs",
+  "hal-types",
   "temp"
 ]

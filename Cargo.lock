@@ -118,6 +118,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "flume",
+ "hal-types",
  "reqwest",
  "runtime",
  "tokio",
@@ -450,6 +451,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hal-types"
+version = "0.1.0"
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -754,6 +759,7 @@ dependencies = [
 name = "mizu-hal"
 version = "0.1.0"
 dependencies = [
+ "hal-types",
  "rand_core",
 ]
 

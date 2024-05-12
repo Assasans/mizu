@@ -4,6 +4,9 @@ pub mod debug;
 pub mod print;
 pub mod alloc;
 pub mod rand;
+pub mod discord;
+
+pub use hal_types as types;
 
 use core::{arch::asm, ffi::{c_char, c_void}, ptr};
 

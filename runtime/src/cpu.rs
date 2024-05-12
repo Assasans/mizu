@@ -554,6 +554,12 @@ impl Cpu {
             self.perf.end_cpu_time();
             return self.update_pc();
           }
+          (0x3, 0x01) => {
+            // mulhu
+            self.regs[rd] = ((self.regs[rs1] as u128).wrapping_mul(self.regs[rs2] as u128) >> 64) as u64;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
           (0x4, 0x00) => {
             // xor
             self.regs[rd] = self.regs[rs1] ^ self.regs[rs2];
