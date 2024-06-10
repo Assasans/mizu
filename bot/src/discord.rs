@@ -10,7 +10,8 @@ use twilight_model::gateway::event::Event;
 use twilight_model::id::Id;
 use twilight_model::id::marker::{ChannelMarker, GuildMarker, StickerMarker};
 use twilight_standby::Standby;
-use runtime::bus::BusMemoryExt;
+use hal_types::StringPtr;
+use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::param::DRAM_BASE;
 
@@ -19,6 +20,21 @@ pub struct DiscordInterruptHandler {
   pub channel_id: Id<ChannelMarker>,
   pub standby: Arc<Standby>,
   pub http: Arc<Client>,
+}
+
+pub trait MemoryObject<T> {
+  fn read(&self, bus: &mut Bus) -> T;
+  fn write(&self, bus: &mut Bus, value: &T);
+}
+
+impl MemoryObject<String> for StringPtr {
+  fn read(&self, bus: &mut Bus) -> String {
+    bus.read_string(self.0 as u64).unwrap().to_str().unwrap().to_owned()
+  }
+
+  fn write(&self, bus: &mut Bus, value: &String) {
+    bus.write_string(self.0 as u64, value).unwrap();
+  }
 }
 
 #[async_trait]
@@ -36,7 +52,7 @@ impl InterruptHandler for DiscordInterruptHandler {
         let mut builder = self.http.create_message(Id::new(request.channel_id));
 
         let content = if !request.content.is_null() {
-          Some(cpu.bus.read_string(request.content as u64).unwrap().to_string_lossy().to_string())
+          Some(request.content.read(&mut cpu.bus))
         } else {
           None
         };
@@ -65,10 +81,10 @@ impl InterruptHandler for DiscordInterruptHandler {
           id: response.id.get(),
           channel_id: response.channel_id.get(),
           author_id: response.author.id.get(),
-          content: (DRAM_BASE + 0x9900) as *const c_char,
+          content: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
         };
 
-        cpu.bus.write_string(ffi_message.content as u64, &response.content).unwrap();
+        ffi_message.content.write(&mut cpu.bus, &response.content);
         cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
         cpu.regs[10] = DRAM_BASE + 0x6000;
       }
@@ -79,7 +95,7 @@ impl InterruptHandler for DiscordInterruptHandler {
         self.http.create_reaction(
           Id::new(request.channel_id),
           Id::new(request.message_id),
-          &RequestReactionType::Unicode { name: cpu.bus.read_string(request.emoji as u64).unwrap().to_str().unwrap() },
+          &RequestReactionType::Unicode { name: &request.emoji.read(&mut cpu.bus) },
         ).await.unwrap();
         cpu.regs[10] = 0;
       }
@@ -102,10 +118,10 @@ impl InterruptHandler for DiscordInterruptHandler {
           id: message.id.get(),
           channel_id: message.channel_id.get(),
           author_id: message.author.id.get(),
-          content: (DRAM_BASE + 0x9900) as *const c_char,
+          content: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
         };
 
-        cpu.bus.write_string(ffi_message.content as u64, &message.content).unwrap();
+        ffi_message.content.write(&mut cpu.bus, &message.content);
         cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
         cpu.regs[10] = DRAM_BASE + 0x6000;
       }

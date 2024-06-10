@@ -9,6 +9,7 @@ pub mod discord;
 pub use hal_types as types;
 
 use core::{arch::asm, ffi::{c_char, c_void}, ptr};
+use hal_types::StringPtr;
 
 pub const CPUID_BASE: *const c_void = 0x10000 as *const c_void;
 pub const CPUID_NAME: *const c_char = CPUID_BASE.cast();
@@ -23,9 +24,9 @@ pub const SYSCALL_HALT: u64 = 15;
 #[inline(always)]
 pub unsafe fn syscall(number: u64) {
   asm!(
-    "ecall",
-    in("a7") number,
-    options(nomem, nostack)
+  "ecall",
+  in("a7") number,
+  options(nomem, nostack)
   );
 }
 
@@ -46,9 +47,9 @@ pub fn debug_log(message: &str) {
   // SAFETY: Safe :)
   unsafe {
     asm!(
-      "",
-      in("a0") message.as_ptr(),
-      options(nomem, nostack)
+    "",
+    in("a0") message.as_ptr(),
+    options(nomem, nostack)
     );
     syscall(SYSCALL_LOG);
   }
@@ -58,9 +59,9 @@ pub fn debug_log_bytes(message: *const u8) {
   // SAFETY: Safe :)
   unsafe {
     asm!(
-      "",
-      in("a0") message,
-      options(nomem, nostack)
+    "",
+    in("a0") message,
+    options(nomem, nostack)
     );
     syscall(SYSCALL_LOG);
   }
@@ -130,4 +131,20 @@ pub unsafe fn read_null_terminated_string_unchecked<'a>(ptr: *const c_char) -> &
 
   let slice = core::slice::from_raw_parts(ptr as *const u8, len);
   core::str::from_utf8_unchecked(slice)
+}
+
+pub trait PtrExt<T: ?Sized> {
+  fn new(value: &T) -> Self;
+  fn get(&self) -> &T;
+}
+
+impl PtrExt<str> for StringPtr {
+  fn new(value: &str) -> Self {
+    // TODO: This must create null terminated pointer
+    StringPtr(value.as_ptr() as *const c_char)
+  }
+
+  fn get(&self) -> &str {
+    unsafe { read_null_terminated_string_unchecked(self.0) }
+  }
 }

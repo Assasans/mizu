@@ -29,6 +29,7 @@ use twilight_gateway::Shard;
 use twilight_http::Client;
 use twilight_model::gateway::{Intents, ShardId};
 use twilight_model::gateway::event::Event;
+use twilight_model::http::attachment::Attachment;
 use twilight_standby::Standby;
 use runtime::cpu::Cpu;
 use runtime::exception::Exception;
@@ -119,7 +120,19 @@ use prelude::*;
       fs::write(code_filename, code).await?;
       let (binary_filename, compile_error, success) = generate_rv_obj().await;
       if !success {
-        http.create_message(msg.channel_id).content(&format!("compilation failed: ```c\n{}```", compile_error))?.await?;
+        let attachments = if compile_error.len() > 1600 {
+          vec![Attachment::from_bytes("error.log".to_owned(), compile_error.as_bytes().to_owned(), 1)]
+        } else {
+          vec![]
+        };
+
+        if compile_error.len() > 1600 {
+          http.create_message(msg.channel_id)
+            .content("compilation failed").unwrap()
+            .attachments(&attachments)?.await?;
+        } else {
+          http.create_message(msg.channel_id).content(&format!("compilation failed: ```c\n{}```", compile_error))?.await?;
+        }
         return Ok(());
       }
 
@@ -156,7 +169,7 @@ use prelude::*;
         channel_id: msg.channel_id,
         standby: standby.clone(),
         http: http.clone(),
-        object_storage: object_storage.clone()
+        object_storage: object_storage.clone(),
       })));
       cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
         guild_id: msg.guild_id.unwrap(),
