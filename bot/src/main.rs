@@ -31,6 +31,7 @@ use twilight_model::gateway::{Intents, ShardId};
 use twilight_model::gateway::event::Event;
 use twilight_model::http::attachment::Attachment;
 use twilight_standby::Standby;
+use regex::{Captures, Regex};
 use runtime::cpu::Cpu;
 use runtime::exception::Exception;
 use runtime::perf_counter::CPU_TIME_LIMIT;
@@ -126,7 +127,7 @@ use prelude::*;
           vec![]
         };
 
-        if compile_error.len() > 1600 {
+        if compile_error.len() > 1800 {
           http.create_message(msg.channel_id)
             .content("compilation failed").unwrap()
             .attachments(&attachments)?.await?;
@@ -137,9 +138,14 @@ use prelude::*;
       }
 
       let assembly = get_disassembled(&binary_filename).await;
+      let assembly = Regex::new(r"(?m)^ffffffff80[0-9a-f]{6}").unwrap().replace_all(&assembly, |captures: &Captures| {
+        let address = u64::from_str_radix(captures.get(0).unwrap().as_str(), 16).unwrap();
+        let base_address = 0xffffffff80000000u64;
+        format!("${:04x}", address - base_address)
+      });
       http.create_message(msg.channel_id).content(&format!(
-        "compilation successful: ```x86asm\n{}```",
-        if assembly.len() > 1600 { "; too long" } else { &assembly }
+        "compilation successful: ```mips\n{}```",
+        if assembly.len() > 1800 { "; too long" } else { &assembly }
       ))?.await?;
       // debug!("{}", assembly);
 
@@ -269,7 +275,14 @@ async fn generate_rv_binary(obj: &str) {
 async fn get_disassembled(obj: &str) -> String {
   let objcopy = "riscv64-unknown-elf-objdump";
   let output = Command::new(objcopy)
-    .args(&["-d", "--visualize-jumps", "-C", obj])
+    .args(&[
+      "--disassemble=_start",
+      "--no-show-raw-insn",
+      // "--visualize-jumps",
+      // "--source",
+      "-C",
+      obj
+    ])
     .output()
     .await
     .expect("Failed to disassemble rv binary");
