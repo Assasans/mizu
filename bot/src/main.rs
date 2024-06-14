@@ -174,10 +174,10 @@ use prelude::*;
         let base_address = 0xffffffff80000000u64;
         format!("${:04x}", address - base_address)
       });
-      http.create_message(msg.channel_id).content(&format!(
-        "compilation successful: ```mips\n{}```",
-        if assembly.len() > 1800 { "; too long" } else { &assembly }
-      ))?.await?;
+      // http.create_message(msg.channel_id).content(&format!(
+      //   "compilation successful: ```mips\n{}```",
+      //   if assembly.len() > 1800 { "; too long" } else { &assembly }
+      // ))?.await?;
       // debug!("{}", assembly);
 
       generate_rv_binary(&binary_filename).await;

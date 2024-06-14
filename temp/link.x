@@ -2,7 +2,7 @@ ENTRY(_start)
 MEMORY
 {
   rom : ORIGIN = 0xffffffff80000000, LENGTH = 0x4000
-  ram : ORIGIN = 0xffffffff80004000, LENGTH = 0x4000
+  ram : ORIGIN = 0xffffffff80004000, LENGTH = 0x8000
 }
 
 STACK_SIZE = 0x1000;
