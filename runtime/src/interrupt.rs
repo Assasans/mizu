@@ -9,7 +9,8 @@ pub enum Interrupt {
   SupervisorExternalInterrupt,
   MachineExternalInterrupt,
 
-  PlatformDefined16
+  PlatformDefined16,
+  PlatformDefined17,
 }
 
 impl Interrupt {
@@ -23,6 +24,7 @@ impl Interrupt {
       SupervisorExternalInterrupt => 9 | MASK_INTERRUPT_BIT,
       MachineExternalInterrupt => 11 | MASK_INTERRUPT_BIT,
       PlatformDefined16 => 16 | MASK_INTERRUPT_BIT,
+      PlatformDefined17 => 17 | MASK_INTERRUPT_BIT,
     }
   }
 }

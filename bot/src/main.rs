@@ -4,8 +4,10 @@ pub mod discord;
 pub mod object_storage;
 pub mod log;
 pub mod halt;
+mod execution_context;
 
 use std::{env, mem};
+use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{c_char, CString};
 use std::marker::PhantomData;
@@ -32,11 +34,18 @@ use twilight_model::gateway::event::Event;
 use twilight_model::http::attachment::Attachment;
 use twilight_standby::Standby;
 use regex::{Captures, Regex};
+use tokio::sync::{Mutex, RwLock};
+use twilight_model::id::Id;
+use twilight_model::id::marker::GuildMarker;
+use runtime::bus::BusMemoryExt;
 use runtime::cpu::Cpu;
+use runtime::csr::MCAUSE;
 use runtime::exception::Exception;
+use runtime::interrupt::Interrupt;
 use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::DiscordInterruptHandler;
 use crate::dump_performance::DumpPerformanceHandler;
+use crate::execution_context::ExecutionContext;
 use crate::halt::HaltHandler;
 use crate::http::HttpHandler;
 use crate::log::LogHandler;
@@ -73,6 +82,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
   let object_storage = Arc::new(ObjectStorage::new());
   object_storage.put("amongus", "да я люблю сосать член".as_bytes());
 
+  let contexts = Arc::new(Contexts::new());
+
   // Startup the event loop to process each event in the event stream as they
   // come in.
   while let item = shard.next_event().await {
@@ -86,10 +97,22 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     standby.process(&event);
 
     // Spawn a new task to handle the event
-    tokio::spawn(handle_event(event, Arc::clone(&http), Arc::clone(&standby), Arc::clone(&object_storage)));
+    tokio::spawn(handle_event(event, Arc::clone(&http), Arc::clone(&standby), Arc::clone(&object_storage), Arc::clone(&contexts)));
   }
 
   Ok(())
+}
+
+pub struct Contexts {
+  pub contexts: RwLock<HashMap<Id<GuildMarker>, Arc<Mutex<ExecutionContext>>>>,
+}
+
+impl Contexts {
+  pub fn new() -> Self {
+    Contexts {
+      contexts: RwLock::new(HashMap::new())
+    }
+  }
 }
 
 async fn handle_event(
@@ -97,6 +120,7 @@ async fn handle_event(
   http: Arc<Client>,
   standby: Arc<Standby>,
   object_storage: Arc<ObjectStorage>,
+  contexts: Arc<Contexts>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
   match event {
     Event::MessageCreate(msg) if msg.content.starts_with("!vm") => {
@@ -116,6 +140,13 @@ use prelude::*;
 {}
 "#, code);
       debug!("running code: {}", code);
+
+      let context = {
+        let mut contexts = contexts.contexts.write().await;
+        let context = contexts.entry(msg.guild_id.unwrap());
+        context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
+      };
+      let mut context = context.lock().await;
 
       let code_filename = "temp/src/main.rs";
       fs::write(code_filename, code).await?;
@@ -151,7 +182,7 @@ use prelude::*;
 
       generate_rv_binary(&binary_filename).await;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
-      let mut cpu = Cpu::new(code);
+      let cpu = context.cpu.insert(Cpu::new(code));
       cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
         guild_id: msg.guild_id.unwrap(),
         channel_id: msg.channel_id,
@@ -237,6 +268,66 @@ use prelude::*;
       } else {
         http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
       }
+    }
+    Event::MessageCreate(msg) => {
+      debug!("create message: {:?}", msg);
+      if msg.author.bot || msg.content.len() > 200 {
+        return Ok(());
+      }
+
+      let context = {
+        let mut contexts = contexts.contexts.write().await;
+        let context = contexts.entry(msg.guild_id.unwrap());
+        context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
+      };
+      let mut context = context.lock().await;
+      let cpu = context.cpu.as_mut().unwrap();
+
+      cpu.halt = false;
+      cpu.bus.write_string(0xffffffff80010000, &msg.content).unwrap();
+      cpu.regs[10] = 0xffffffff80010000;
+      cpu.handle_interrupt(Interrupt::PlatformDefined17);
+      loop {
+        let inst = match cpu.fetch() {
+          Ok(inst) => inst,
+          Err(exception) => {
+            cpu.handle_exception(exception);
+            if let Exception::InstructionAccessFault(0) = &exception {
+              break;
+            }
+            if exception.is_fatal() {
+              http.create_message(msg.channel_id).content(&format!("fetch failed: {:?}", exception)).unwrap().await.unwrap();
+              error!("fetch failed: {:?}", exception);
+              break;
+            }
+
+            break;
+          }
+        };
+
+        match cpu.execute(inst).await {
+          Ok(new_pc) => cpu.pc = new_pc,
+          Err(exception) => {
+            cpu.handle_exception(exception);
+            if exception.is_fatal() {
+              http.create_message(msg.channel_id).content(&format!("execute failed: {:?}", exception)).unwrap().await.unwrap();
+              error!("execute failed: {:?}", exception);
+              break;
+            }
+            break;
+          }
+        };
+        cpu.perf.instructions_retired += 1;
+        if cpu.halt {
+          break;
+        }
+        if cpu.csr.load(MCAUSE) == 0 {
+          error!("exited from trap");
+          break; // Exited from trap
+        }
+      }
+      let ptr = cpu.saved_regs[10];
+      cpu.saved_regs.fill(0);
     }
     Event::Ready(_) => {
       info!("shard is ready");

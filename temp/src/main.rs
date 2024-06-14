@@ -12,10 +12,22 @@ use prelude::*;
 #[link_section = ".start"]
 #[no_mangle]
 pub unsafe extern "C" fn _start() {
-  let mut count = 0;
-  for i in 0..10000 {
-    if i % 7 == 0 { count += 1; }
-  }
-  println!("{}", count);
+  asm!(
+    "li t0, 0xffffffff80000201",
+    "csrrw zero, mtvec, t0"
+  );
   halt();
 }
+
+pub unsafe extern "C" fn int_discord() {
+  let ptr: *const core::ffi::c_char;
+  asm!("", out("a0") ptr);
+  println!("discord interrupt: ptr={}, content={:?}", ptr as u64, read_null_terminated_string_unchecked(ptr));
+  asm!("mret");
+}
+
+global_asm!(r"
+.section .text.ivt
+.org .text.ivt + 17*4
+  jal {}
+", sym int_discord);
