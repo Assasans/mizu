@@ -10,6 +10,7 @@ use std::{env, mem};
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{c_char, CString};
+use std::fmt::Write;
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::num::NonZeroU64;
@@ -35,15 +36,19 @@ use twilight_model::http::attachment::Attachment;
 use twilight_standby::Standby;
 use regex::{Captures, Regex};
 use tokio::sync::{Mutex, RwLock};
+use twilight_model::channel::message::ReactionType;
 use twilight_model::id::Id;
 use twilight_model::id::marker::GuildMarker;
+use hal_types::discord::{action, discord_create_reaction_t, discord_event_add_reaction_t, discord_message_t};
+use hal_types::StringPtr;
 use runtime::bus::BusMemoryExt;
 use runtime::cpu::Cpu;
 use runtime::csr::MCAUSE;
 use runtime::exception::Exception;
 use runtime::interrupt::Interrupt;
+use runtime::param::DRAM_BASE;
 use runtime::perf_counter::CPU_TIME_LIMIT;
-use crate::discord::DiscordInterruptHandler;
+use crate::discord::{DiscordInterruptHandler, MemoryObject};
 use crate::dump_performance::DumpPerformanceHandler;
 use crate::execution_context::ExecutionContext;
 use crate::halt::HaltHandler;
@@ -63,7 +68,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
   // Specify intents requesting events about things like new and updated
   // messages in a guild and direct messages.
-  let intents = Intents::GUILD_MESSAGES | Intents::DIRECT_MESSAGES | Intents::MESSAGE_CONTENT;
+  let intents = Intents::GUILD_MESSAGES | Intents::DIRECT_MESSAGES | Intents::MESSAGE_CONTENT | Intents::GUILD_MESSAGE_REACTIONS;
 
   // Create a single shard.
   let mut shard = Shard::new(ShardId::ONE, token.clone(), intents);
@@ -182,6 +187,8 @@ use prelude::*;
 
       generate_rv_binary(&binary_filename).await;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
+      context.http = Some(http.clone());
+      context.channel_id = Some(msg.channel_id);
       let cpu = context.cpu.insert(Cpu::new(code));
       cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
         guild_id: msg.guild_id.unwrap(),
@@ -275,59 +282,102 @@ use prelude::*;
         return Ok(());
       }
 
-      let context = {
-        let mut contexts = contexts.contexts.write().await;
-        let context = contexts.entry(msg.guild_id.unwrap());
-        context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
-      };
-      let mut context = context.lock().await;
-      let cpu = context.cpu.as_mut().unwrap();
+      dispatch_interrupt(&contexts, msg.guild_id.unwrap(), |cpu| {
+        cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+          object_storage: object_storage.clone(),
+        })));
+        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
 
-      cpu.halt = false;
-      cpu.bus.write_string(0xffffffff80010000, &msg.content).unwrap();
-      cpu.regs[10] = 0xffffffff80010000;
-      cpu.handle_interrupt(Interrupt::PlatformDefined17);
-      loop {
-        let inst = match cpu.fetch() {
-          Ok(inst) => inst,
-          Err(exception) => {
-            cpu.handle_exception(exception);
-            if let Exception::InstructionAccessFault(0) = &exception {
-              break;
-            }
-            if exception.is_fatal() {
-              http.create_message(msg.channel_id).content(&format!("fetch failed: {:?}", exception)).unwrap().await.unwrap();
-              error!("fetch failed: {:?}", exception);
-              break;
-            }
-
-            break;
-          }
+        let event = discord_message_t {
+          id: msg.id.get(),
+          channel_id: msg.channel_id.get(),
+          author_id: msg.author.id.get(),
+          content: StringPtr((DRAM_BASE + 0x19000) as *const c_char),
         };
+        cpu.bus.write_string(event.content.0 as u64, &msg.content).unwrap();
 
-        match cpu.execute(inst).await {
-          Ok(new_pc) => cpu.pc = new_pc,
-          Err(exception) => {
-            cpu.handle_exception(exception);
-            if exception.is_fatal() {
-              http.create_message(msg.channel_id).content(&format!("execute failed: {:?}", exception)).unwrap().await.unwrap();
-              error!("execute failed: {:?}", exception);
-              break;
-            }
-            break;
-          }
-        };
-        cpu.perf.instructions_retired += 1;
-        if cpu.halt {
-          break;
+        (action::EVENT_MESSAGE_CREATE, event)
+      }).await;
+    }
+    Event::ReactionAdd(reaction) => {
+      debug!("add reaction: {:?}", reaction);
+
+      dispatch_interrupt(&contexts, reaction.guild_id.unwrap(), |cpu| {
+        cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+          guild_id: reaction.guild_id.unwrap(),
+          channel_id: reaction.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
+          guild_id: reaction.guild_id.unwrap(),
+          channel_id: reaction.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
+          guild_id: reaction.guild_id.unwrap(),
+          channel_id: reaction.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
+          guild_id: reaction.guild_id.unwrap(),
+          channel_id: reaction.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+          object_storage: object_storage.clone(),
+        })));
+        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
+          guild_id: reaction.guild_id.unwrap(),
+          channel_id: reaction.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
+
+        if let ReactionType::Unicode { name } = &reaction.emoji {
+          let event = discord_event_add_reaction_t {
+            channel_id: reaction.channel_id.get(),
+            message_id: reaction.message_id.get(),
+            user_id: reaction.user_id.get(),
+            emoji: StringPtr((DRAM_BASE + 0x19000) as *const c_char),
+          };
+          cpu.bus.write_string(event.emoji.0 as u64, name).unwrap();
+
+          (action::EVENT_REACTION_ADD, event)
+        } else {
+          todo!()
         }
-        if cpu.csr.load(MCAUSE) == 0 {
-          error!("exited from trap");
-          break; // Exited from trap
-        }
-      }
-      let ptr = cpu.saved_regs[10];
-      cpu.saved_regs.fill(0);
+      }).await;
     }
     Event::Ready(_) => {
       info!("shard is ready");
@@ -336,6 +386,67 @@ use prelude::*;
   };
 
   Ok(())
+}
+
+async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarker>, block: impl FnOnce(&mut Cpu) -> (u64, T)) {
+  let context = {
+    let mut contexts = contexts.contexts.write().await;
+    let context = contexts.entry(guild_id);
+    context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
+  };
+  let mut context = context.lock().await;
+  let http = context.http.as_ref().unwrap().clone();
+  let channel_id = context.channel_id.as_ref().unwrap().clone();
+  let cpu = context.cpu.as_mut().unwrap();
+
+  cpu.halt = false;
+
+  let (id, event) = block(cpu);
+  cpu.bus.write_struct(DRAM_BASE + 0x16000, &event).unwrap();
+  cpu.regs[10] = id;
+  cpu.regs[11] = DRAM_BASE + 0x16000;
+
+  cpu.handle_interrupt(Interrupt::PlatformDefined17);
+  loop {
+    let inst = match cpu.fetch() {
+      Ok(inst) => inst,
+      Err(exception) => {
+        cpu.handle_exception(exception);
+        if let Exception::InstructionAccessFault(0) = &exception {
+          break;
+        }
+        if exception.is_fatal() {
+          http.create_message(channel_id).content(&format!("fetch failed: {:?}", exception)).unwrap().await.unwrap();
+          error!("fetch failed: {:?}", exception);
+          break;
+        }
+
+        break;
+      }
+    };
+
+    match cpu.execute(inst).await {
+      Ok(new_pc) => cpu.pc = new_pc,
+      Err(exception) => {
+        cpu.handle_exception(exception);
+        if exception.is_fatal() {
+          http.create_message(channel_id).content(&format!("execute failed: {:?}", exception)).unwrap().await.unwrap();
+          error!("execute failed: {:?}", exception);
+          break;
+        }
+        break;
+      }
+    };
+    cpu.perf.instructions_retired += 1;
+    if cpu.halt {
+      break;
+    }
+    if cpu.csr.load(MCAUSE) == 0 {
+      error!("exited from trap");
+      break; // Exited from trap
+    }
+  }
+  cpu.saved_regs.fill(0);
 }
 
 async fn generate_rv_obj() -> (String, String, bool) {
