@@ -2,11 +2,14 @@
 
 pub mod debug;
 pub mod print;
+pub mod panic;
 pub mod alloc;
 pub mod rand;
 pub mod discord;
+pub mod ivt;
 
 pub use hal_types as types;
+pub use mini_backtrace as mini_backtrace;
 
 use core::{arch::asm, ffi::{c_char, c_void}, ptr};
 use hal_types::StringPtr;

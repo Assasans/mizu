@@ -1,3 +1,6 @@
+use std::time::{Duration, Instant};
+use crate::param::CPUID_BASE;
+
 pub const NUM_CSRS: usize = 4096;
 
 // Machine-level CSRs.
@@ -50,6 +53,19 @@ pub const SIP: usize = 0x144;
 /// Supervisor address translation and protection.
 pub const SATP: usize = 0x180;
 
+/// Unprivileged-level CSRs.
+pub mod unprivileged {
+  /// Timer for RDTIME instruction.
+  pub const TIME: usize = 0xC01;
+}
+
+// Machine-level CSRs.
+pub mod machine {
+  // Machine Information Registers
+  /// Pointer to configuration data structure.
+  pub const CONFIGPTR: usize = 0xF15;
+}
+
 // mstatus and sstatus field mask
 pub const MASK_SIE: u64 = 1 << 1;
 pub const MASK_MIE: u64 = 1 << 3;
@@ -84,12 +100,14 @@ pub const MASK_MEIP: u64 = 1 << 11;
 
 pub struct Csr {
   csrs: [u64; NUM_CSRS],
+  time_passed: Box<dyn Fn() -> Duration + Send + Sync>
 }
 
 impl Csr {
-  pub fn new() -> Csr {
+  pub fn new(time_passed: Box<dyn Fn() -> Duration + Send + Sync>) -> Csr {
     Self {
-      csrs: [0; NUM_CSRS]
+      csrs: [0; NUM_CSRS],
+      time_passed
     }
   }
 
@@ -118,6 +136,8 @@ impl Csr {
       SIE => self.csrs[MIE] & self.csrs[MIDELEG],
       SIP => self.csrs[MIP] & self.csrs[MIDELEG],
       SSTATUS => self.csrs[MSTATUS] & MASK_SSTATUS,
+      machine::CONFIGPTR => CPUID_BASE,
+      unprivileged::TIME => (self.time_passed)().as_nanos() as u64,
       _ => self.csrs[addr],
     }
   }

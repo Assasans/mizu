@@ -21,6 +21,7 @@ pub trait InterruptHandler: Send + Sync {
 pub struct Cpu {
   pub regs: [u64; 32],
   pub saved_regs: [u64; 32],
+  pub fp_regs: [f64; 32],
   pub pc: u64,
   pub bus: Bus,
   /// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
@@ -36,18 +37,23 @@ impl Cpu {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
-    registers[2] = DRAM_BASE + 0x5000;
+    registers[2] = DRAM_BASE + 0x9000;
     debug!("initialized sp=0x{:x}", registers[2]);
+
+    // TODO(Assasans): Wtf
+    let start_time = Box::leak(Box::new(Instant::now()));
+    let time = || Instant::now() - *start_time;
 
     let pc = DRAM_BASE;
     let bus = Bus::new(code);
-    let csr = Csr::new();
+    let csr = Csr::new(Box::new(time));
     let ivt = HashMap::new();
     let perf = PerformanceCounter::new();
 
     Cpu {
       regs: registers,
       saved_regs: [0; 32],
+      fp_regs: [0.0; 32],
       pc,
       bus,
       csr,
@@ -319,6 +325,17 @@ impl Cpu {
           }
         }
       }
+      0x07 => {
+        match funct3 {
+          0x3 => {
+            todo!();
+          }
+          _ => {
+            self.perf.end_cpu_time();
+            Err(Exception::IllegalInstruction(inst))
+          }
+        }
+      },
       0x13 => {
         // imm[11:0] = inst[31:20]
         let imm = ((inst & 0xfff00000) as i32 as i64 >> 20) as u64;
@@ -469,6 +486,26 @@ impl Cpu {
           _ => unreachable!(),
         }
       }
+      0x27 => {
+        match funct3 {
+          0x3 => {
+            // fsd
+            let imm = ((((inst as i32 as i64) >> 20) as u64) & 0x7f0) | (inst >> 7) & 0x1f;
+            let base_addr = self.regs[rs1];
+            let addr = base_addr + imm;
+            let value = self.fp_regs[rs2];
+
+            info!("fsd {rs2},{imm}({rs1}): 0x{base_addr:#08x} + {imm} (0x{addr:#08x}) set {value}");
+            self.store(addr, 64, value.to_bits()).unwrap();
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          _ => {
+            self.perf.end_cpu_time();
+            Err(Exception::IllegalInstruction(inst))
+          }
+        }
+      },
       0x2f => {
         // RV64A: "A" standard extension for atomic instructions
         let funct5 = (funct7 & 0b1111100) >> 2;
@@ -628,6 +665,12 @@ impl Cpu {
           (0x0, 0x00) => {
             // addw
             self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]) as i32 as i64 as u64;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x0, 0x1) => {
+            // mulw
+            self.regs[rd] = (self.regs[rs1] as i32).wrapping_mul(self.regs[rs2] as i32) as i64 as u64;
             self.perf.end_cpu_time();
             return self.update_pc();
           }

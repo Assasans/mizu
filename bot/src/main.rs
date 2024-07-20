@@ -4,6 +4,7 @@ pub mod discord;
 pub mod object_storage;
 pub mod log;
 pub mod halt;
+pub mod time;
 mod execution_context;
 
 use std::{env, mem};
@@ -55,6 +56,7 @@ use crate::halt::HaltHandler;
 use crate::http::HttpHandler;
 use crate::log::LogHandler;
 use crate::object_storage::{ObjectStorage, ObjectStorageHandler};
+use crate::time::TimeHandler;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -120,6 +122,8 @@ impl Contexts {
   }
 }
 
+pub const ENABLE_DISCORD_INTERRUPTS: bool = false;
+
 async fn handle_event(
   event: Event,
   http: Arc<Client>,
@@ -137,7 +141,6 @@ async fn handle_event(
 #![no_std]
 #![no_main]
 
-mod panic;
 mod prelude;
 
 use prelude::*;
@@ -222,6 +225,7 @@ use prelude::*;
         http: http.clone(),
       })));
       cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
+      cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
 
       loop {
         let inst = match cpu.fetch() {
@@ -259,9 +263,9 @@ use prelude::*;
         }
 
         if cpu.perf.cpu_time > CPU_TIME_LIMIT {
-          error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
-          http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
-          break;
+          // error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
+          // http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+          // break;
         }
 
         match cpu.check_pending_interrupt() {
@@ -279,6 +283,10 @@ use prelude::*;
     Event::MessageCreate(msg) => {
       debug!("create message: {:?}", msg);
       if msg.author.bot || msg.content.len() > 200 {
+        return Ok(());
+      }
+
+      if !ENABLE_DISCORD_INTERRUPTS {
         return Ok(());
       }
 
@@ -329,6 +337,10 @@ use prelude::*;
     }
     Event::ReactionAdd(reaction) => {
       debug!("add reaction: {:?}", reaction);
+
+      if !ENABLE_DISCORD_INTERRUPTS {
+        return Ok(());
+      }
 
       dispatch_interrupt(&contexts, reaction.guild_id.unwrap(), |cpu| {
         cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
@@ -451,6 +463,8 @@ async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarke
 
 async fn generate_rv_obj() -> (String, String, bool) {
   let output = Command::new("cargo")
+    .env("CC", "/usr/bin/clang")
+    .env("CXX", "/usr/bin/clang++")
     .current_dir("temp")
     .args(&[
       "+nightly",

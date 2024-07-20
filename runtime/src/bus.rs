@@ -8,7 +8,7 @@ use tracing::{debug, error, trace};
 
 use crate::dram::Dram;
 use crate::exception::Exception;
-use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END, RANDOM_BASE, RANDOM_END, SYSTEM_TIME_BASE, SYSTEM_TIME_END, TIME_BASE, TIME_END};
+use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END, RANDOM_BASE, RANDOM_END};
 
 pub struct Bus {
   pub dram: Dram,
@@ -45,26 +45,6 @@ impl Bus {
         let mut random = [0u8; 8];
         thread_rng().fill_bytes(&mut random[..(size / 8) as usize]);
         Ok(u64::from_le_bytes(random))
-      }
-      TIME_BASE..=TIME_END => {
-        let time = Instant::now() - self.start_time;
-        let bytes = time.as_nanos().to_le_bytes();
-        let offset = (addr - TIME_BASE) as usize;
-        let bytes_to_read = (size / 8) as usize;
-        let bytes = &bytes[offset..offset + bytes_to_read];
-        let mut u64_bytes = [0u8; 8];
-        u64_bytes[..bytes_to_read].copy_from_slice(bytes);
-        Ok(u64::from_le_bytes(u64_bytes))
-      }
-      SYSTEM_TIME_BASE..=SYSTEM_TIME_END => {
-        let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        let bytes = time.as_nanos().to_le_bytes();
-        let offset = (addr - SYSTEM_TIME_BASE) as usize;
-        let bytes_to_read = (size / 8) as usize;
-        let bytes = &bytes[offset..offset + bytes_to_read];
-        let mut u64_bytes = [0u8; 8];
-        u64_bytes[..bytes_to_read].copy_from_slice(bytes);
-        Ok(u64::from_le_bytes(u64_bytes))
       }
       DRAM_BASE..=DRAM_END => self.dram.load(addr, size),
       _ => {
