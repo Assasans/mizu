@@ -44,6 +44,7 @@ use hal_types::discord::{action, discord_create_reaction_t, discord_event_add_re
 use hal_types::StringPtr;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::Cpu;
+use runtime::csr;
 use runtime::csr::MCAUSE;
 use runtime::exception::Exception;
 use runtime::interrupt::Interrupt;
@@ -265,10 +266,10 @@ use prelude::*;
           break;
         }
 
-        if cpu.perf.cpu_time > CPU_TIME_LIMIT {
-          // error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
-          // http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
-          // break;
+        if cpu.csr.load(csr::machine::POWERSTATE) == 1 && cpu.perf.cpu_time > CPU_TIME_LIMIT {
+          error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
+          http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+          break;
         }
 
         match cpu.check_pending_interrupt() {

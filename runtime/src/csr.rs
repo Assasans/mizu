@@ -64,6 +64,9 @@ pub mod machine {
   // Machine Information Registers
   /// Pointer to configuration data structure.
   pub const CONFIGPTR: usize = 0xF15;
+
+  /// Hart power state. Non-standard.
+  pub const POWERSTATE: usize = 0x320;
 }
 
 // mstatus and sstatus field mask

@@ -7,6 +7,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use tracing::{debug, info, trace};
 use crate::bus::Bus;
+use crate::csr;
 use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SIE, MASK_SPIE, MASK_SPP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC, SATP, SCAUSE, SEPC, SSTATUS, STVAL, STVEC};
 use crate::exception::Exception;
 use crate::interrupt::Interrupt;
@@ -45,7 +46,10 @@ impl Cpu {
     let time = || Instant::now() - *start_time;
 
     let pc = DRAM_BASE;
-    let csr = Csr::new(Box::new(time));
+
+    let mut csr = Csr::new(Box::new(time));
+    csr.store(csr::machine::POWERSTATE, 1);
+
     let ivt = HashMap::new();
     let perf = PerformanceCounter::new();
 
