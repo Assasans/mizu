@@ -6,6 +6,7 @@ pub mod exception;
 pub mod csr;
 pub mod interrupt;
 pub mod perf_counter;
+pub mod isolate;
 
 #[cfg(test)]
 mod tests {

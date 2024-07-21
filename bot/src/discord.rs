@@ -23,16 +23,16 @@ pub struct DiscordInterruptHandler {
 }
 
 pub trait MemoryObject<T> {
-  fn read(&self, bus: &mut Bus) -> T;
-  fn write(&self, bus: &mut Bus, value: &T);
+  fn read(&self, bus: &Bus) -> T;
+  fn write(&self, bus: &Bus, value: &T);
 }
 
 impl MemoryObject<String> for StringPtr {
-  fn read(&self, bus: &mut Bus) -> String {
+  fn read(&self, bus: &Bus) -> String {
     bus.read_string(self.0 as u64).unwrap().to_str().unwrap().to_owned()
   }
 
-  fn write(&self, bus: &mut Bus, value: &String) {
+  fn write(&self, bus: &Bus, value: &String) {
     bus.write_string(self.0 as u64, value).unwrap();
   }
 }
@@ -84,7 +84,7 @@ impl InterruptHandler for DiscordInterruptHandler {
           content: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
         };
 
-        ffi_message.content.write(&mut cpu.bus, &response.content);
+        ffi_message.content.write(&cpu.bus, &response.content);
         cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
         cpu.regs[10] = DRAM_BASE + 0x6000;
       }
@@ -95,7 +95,7 @@ impl InterruptHandler for DiscordInterruptHandler {
         self.http.create_reaction(
           Id::new(request.channel_id),
           Id::new(request.message_id),
-          &RequestReactionType::Unicode { name: &request.emoji.read(&mut cpu.bus) },
+          &RequestReactionType::Unicode { name: &request.emoji.read(&cpu.bus) },
         ).await.unwrap();
         cpu.regs[10] = 0;
       }

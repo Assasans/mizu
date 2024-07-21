@@ -42,12 +42,13 @@ use twilight_model::id::Id;
 use twilight_model::id::marker::GuildMarker;
 use hal_types::discord::{action, discord_create_reaction_t, discord_event_add_reaction_t, discord_message_t};
 use hal_types::StringPtr;
-use runtime::bus::BusMemoryExt;
+use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::Cpu;
 use runtime::csr::MCAUSE;
 use runtime::exception::Exception;
 use runtime::interrupt::Interrupt;
-use runtime::param::DRAM_BASE;
+use runtime::isolate::Isolate;
+use runtime::param::HARDWARE_BASE;
 use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::{DiscordInterruptHandler, MemoryObject};
 use crate::dump_performance::DumpPerformanceHandler;
@@ -122,7 +123,7 @@ impl Contexts {
   }
 }
 
-pub const ENABLE_DISCORD_INTERRUPTS: bool = false;
+pub const ENABLE_DISCORD_INTERRUPTS: bool = true;
 
 async fn handle_event(
   event: Event,
@@ -192,7 +193,9 @@ use prelude::*;
       let code = fs::read(format!("{}.bin", binary_filename)).await?;
       context.http = Some(http.clone());
       context.channel_id = Some(msg.channel_id);
-      let cpu = context.cpu.insert(Cpu::new(code));
+      let bus = Arc::new(Bus::new(code));
+      let isolate = context.isolate.insert(Isolate::new(bus));
+      let mut cpu = isolate.get_bootstrap_core().lock().await;
       cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
         guild_id: msg.guild_id.unwrap(),
         channel_id: msg.channel_id,
@@ -328,7 +331,7 @@ use prelude::*;
           id: msg.id.get(),
           channel_id: msg.channel_id.get(),
           author_id: msg.author.id.get(),
-          content: StringPtr((DRAM_BASE + 0x19000) as *const c_char),
+          content: StringPtr((HARDWARE_BASE + 0x19000) as *const c_char),
         };
         cpu.bus.write_string(event.content.0 as u64, &msg.content).unwrap();
 
@@ -381,7 +384,7 @@ use prelude::*;
             channel_id: reaction.channel_id.get(),
             message_id: reaction.message_id.get(),
             user_id: reaction.user_id.get(),
-            emoji: StringPtr((DRAM_BASE + 0x19000) as *const c_char),
+            emoji: StringPtr((HARDWARE_BASE + 0x19000) as *const c_char),
           };
           cpu.bus.write_string(event.emoji.0 as u64, name).unwrap();
 
@@ -406,17 +409,17 @@ async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarke
     let context = contexts.entry(guild_id);
     context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
   };
-  let mut context = context.lock().await;
+  let context = context.lock().await;
   let http = context.http.as_ref().unwrap().clone();
   let channel_id = context.channel_id.as_ref().unwrap().clone();
-  let cpu = context.cpu.as_mut().unwrap();
+  let mut cpu = context.isolate.as_ref().unwrap().get_bootstrap_core().lock().await;
 
   cpu.halt = false;
 
-  let (id, event) = block(cpu);
-  cpu.bus.write_struct(DRAM_BASE + 0x16000, &event).unwrap();
+  let (id, event) = block(&mut cpu);
+  cpu.bus.write_struct(HARDWARE_BASE + 0x16000, &event).unwrap();
   cpu.regs[10] = id;
-  cpu.regs[11] = DRAM_BASE + 0x16000;
+  cpu.regs[11] = HARDWARE_BASE + 0x16000;
 
   cpu.handle_interrupt(Interrupt::PlatformDefined17);
   loop {

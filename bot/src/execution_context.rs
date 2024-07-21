@@ -2,12 +2,12 @@ use std::sync::Arc;
 use twilight_http::Client;
 use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
-use runtime::cpu::Cpu;
+use runtime::isolate::Isolate;
 
 pub struct ExecutionContext {
   pub http: Option<Arc<Client>>,
   pub channel_id: Option<Id<ChannelMarker>>,
-  pub cpu: Option<Cpu>
+  pub isolate: Option<Isolate>
 }
 
 impl ExecutionContext {
@@ -15,7 +15,7 @@ impl ExecutionContext {
     let mut this = ExecutionContext {
       http: None,
       channel_id: None,
-      cpu: None
+      isolate: None
     };
     this.init_ivt();
     this

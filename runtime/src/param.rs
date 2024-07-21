@@ -9,6 +9,6 @@ macro_rules! memory_segment {
 }
 
 memory_segment!(DRAM, 0xffffffff_80000000, 1024 * 1024 * 128);
-memory_segment!(HARDWARE, 0x10000, 0x20000);
+memory_segment!(HARDWARE, 0x20000, 0x20000);
 memory_segment!(CPUID, 0x10000, 0x100);
 memory_segment!(RANDOM, 0x12000, 0x100);

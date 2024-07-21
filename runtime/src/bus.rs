@@ -1,29 +1,32 @@
 use std::{ptr, slice, u128};
 use std::ffi::CString;
 use std::mem::size_of;
+use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
 
 use rand::{thread_rng, Rng, RngCore};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 use crate::dram::Dram;
 use crate::exception::Exception;
-use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END, RANDOM_BASE, RANDOM_END};
+use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END, HARDWARE_BASE, HARDWARE_END, HARDWARE_SIZE, RANDOM_BASE, RANDOM_END};
 
 pub struct Bus {
-  pub dram: Dram,
+  pub dram: Mutex<Dram>,
+  pub hardware: Mutex<Vec<u8>>,
   start_time: Instant,
 }
 
 impl Bus {
   pub fn new(code: Vec<u8>) -> Bus {
     Self {
-      dram: Dram::new(code),
+      dram: Mutex::new(Dram::new(code)),
+      hardware: Mutex::new(vec![0xaa; HARDWARE_SIZE as usize]),
       start_time: Instant::now(),
     }
   }
 
-  pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+  pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
     trace!("bus load at 0x{addr:x}");
     match addr {
       CPUID_BASE..=CPUID_END => {
@@ -46,7 +49,23 @@ impl Bus {
         thread_rng().fill_bytes(&mut random[..(size / 8) as usize]);
         Ok(u64::from_le_bytes(random))
       }
-      DRAM_BASE..=DRAM_END => self.dram.load(addr, size),
+      HARDWARE_BASE..=HARDWARE_END => {
+        if ![8, 16, 32, 64].contains(&size) {
+          error!("unaligned load at 0x{addr:x}, {size}");
+          return Err(Exception::LoadAccessFault(addr));
+        }
+        let nbytes = size / 8;
+        let index = (addr - HARDWARE_BASE) as usize;
+        let memory = self.hardware.lock().unwrap();
+        let mut code = memory[index] as u64;
+        // shift the bytes to build up the desired value
+        for i in 1..nbytes {
+          code |= (memory[index + i as usize] as u64) << (i * 8);
+        }
+
+        Ok(code)
+      }
+      DRAM_BASE..=DRAM_END => self.dram.lock().unwrap().load(addr, size),
       _ => {
         error!("invalid load at 0x{addr:x}");
         Err(Exception::LoadAccessFault(addr))
@@ -54,23 +73,37 @@ impl Bus {
     }
   }
 
-  pub fn store(&mut self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
+  pub fn store(&self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
     debug!("writing {value:x} at {addr:x}");
     match addr {
-      DRAM_BASE..=DRAM_END => self.dram.store(addr, size, value),
+      HARDWARE_BASE..=HARDWARE_END => {
+        if ![8, 16, 32, 64].contains(&size) {
+          return Err(Exception::StoreAMOAccessFault(addr));
+        }
+
+        let nbytes = size / 8;
+        let index = (addr - HARDWARE_BASE) as usize;
+        for i in 0..nbytes {
+          let offset = 8 * i as usize;
+          let mut memory = self.hardware.lock().unwrap();
+          memory[index + i as usize] = ((value >> offset) & 0xff) as u8;
+        }
+        Ok(())
+      }
+      DRAM_BASE..=DRAM_END => self.dram.lock().unwrap().store(addr, size, value),
       _ => Err(Exception::StoreAMOAccessFault(addr)),
     }
   }
 }
 
 pub trait BusMemoryExt {
-  fn read(&mut self, addr: u64, len: u64) -> Result<Vec<u8>, Exception>;
-  fn read_struct<T>(&mut self, addr: u64) -> Result<T, Exception>;
-  fn read_string(&mut self, addr: u64) -> Result<CString, Exception>;
+  fn read(&self, addr: u64, len: u64) -> Result<Vec<u8>, Exception>;
+  fn read_struct<T>(&self, addr: u64) -> Result<T, Exception>;
+  fn read_string(&self, addr: u64) -> Result<CString, Exception>;
 
-  fn write(&mut self, addr: u64, value: &[u8]) -> Result<(), Exception>;
-  fn write_struct<T>(&mut self, addr: u64, value: &T) -> Result<(), Exception>;
-  fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception>;
+  fn write(&self, addr: u64, value: &[u8]) -> Result<(), Exception>;
+  fn write_struct<T>(&self, addr: u64, value: &T) -> Result<(), Exception>;
+  fn write_string(&self, addr: u64, value: &str) -> Result<(), Exception>;
 }
 
 fn previous_power_of_two(value: u64) -> u64 {
@@ -83,7 +116,7 @@ fn previous_power_of_two(value: u64) -> u64 {
 }
 
 impl BusMemoryExt for Bus {
-  fn read(&mut self, addr: u64, len: u64) -> Result<Vec<u8>, Exception> {
+  fn read(&self, addr: u64, len: u64) -> Result<Vec<u8>, Exception> {
     let mut result = Vec::with_capacity(len as usize);
     let mut remaining = len;
     let mut offset = 0;
@@ -107,13 +140,13 @@ impl BusMemoryExt for Bus {
     Ok(result)
   }
 
-  fn read_struct<T>(&mut self, addr: u64) -> Result<T, Exception> {
+  fn read_struct<T>(&self, addr: u64) -> Result<T, Exception> {
     let bytes = self.read(addr, size_of::<T>() as u64)?;
     assert_eq!(bytes.len(), size_of::<T>());
     Ok(unsafe { ptr::read(bytes.as_ptr() as *const _) })
   }
 
-  fn read_string(&mut self, addr: u64) -> Result<CString, Exception> {
+  fn read_string(&self, addr: u64) -> Result<CString, Exception> {
     let mut address = addr;
     let mut data = Vec::new();
     loop {
@@ -128,7 +161,7 @@ impl BusMemoryExt for Bus {
     Ok(CString::from_vec_with_nul(data).unwrap())
   }
 
-  fn write(&mut self, addr: u64, value: &[u8]) -> Result<(), Exception> {
+  fn write(&self, addr: u64, value: &[u8]) -> Result<(), Exception> {
     let mut address = addr;
     for byte in value {
       self.store(address, 8, *byte as u64).unwrap();
@@ -137,14 +170,14 @@ impl BusMemoryExt for Bus {
     Ok(())
   }
 
-  fn write_struct<T>(&mut self, addr: u64, value: &T) -> Result<(), Exception> {
+  fn write_struct<T>(&self, addr: u64, value: &T) -> Result<(), Exception> {
     let bytes = unsafe {
       slice::from_raw_parts((value as *const T) as *const u8, size_of::<T>())
     };
     self.write(addr, bytes)
   }
 
-  fn write_string(&mut self, addr: u64, value: &str) -> Result<(), Exception> {
+  fn write_string(&self, addr: u64, value: &str) -> Result<(), Exception> {
     let mut address = addr;
     for byte in value.as_bytes() {
       self.store(address, 8, *byte as u64).unwrap();

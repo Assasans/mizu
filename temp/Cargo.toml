@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 chrono = { version = "0.4.38", default-features = false }
-mizu-hal = { path = "../hal-rs", features = ["backtrace"] }
+mizu-hal = { path = "../hal-rs", features = [] }
 
 [profile.dev]
 panic = "abort"

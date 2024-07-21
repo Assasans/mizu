@@ -12,7 +12,7 @@ RISC-V sandbox for Discord bots.
 
 | Start                | End                  | Size    | Description         | Type          |
 |----------------------|----------------------|---------|---------------------|---------------|
-| `0x0000000000010000` | `0x000000000002ffff` | 128 KiB | Hardware data area  |               |
+| `0x0000000000020000` | `0x000000000003ffff` | 128 KiB | Hardware data area  |               |
 | `0xffffffff80000000` | `0xffffffff87ffffff` | 128 MiB | Conventional memory | usable memory |
 
 ## License

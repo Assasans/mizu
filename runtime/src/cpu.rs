@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::ops::{Div, Rem};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Instant;
 use async_trait::async_trait;
 use tracing::{debug, info, trace};
@@ -23,7 +23,7 @@ pub struct Cpu {
   pub saved_regs: [u64; 32],
   pub fp_regs: [f64; 32],
   pub pc: u64,
-  pub bus: Bus,
+  pub bus: Arc<Bus>,
   /// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
   /// up to 4096 CSRs.
   pub csr: Csr,
@@ -33,7 +33,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-  pub fn new(code: Vec<u8>) -> Self {
+  pub fn new(bus: Arc<Bus>) -> Self {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
@@ -45,7 +45,6 @@ impl Cpu {
     let time = || Instant::now() - *start_time;
 
     let pc = DRAM_BASE;
-    let bus = Bus::new(code);
     let csr = Csr::new(Box::new(time));
     let ivt = HashMap::new();
     let perf = PerformanceCounter::new();
