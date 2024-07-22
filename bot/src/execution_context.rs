@@ -7,7 +7,7 @@ use runtime::isolate::Isolate;
 pub struct ExecutionContext {
   pub http: Option<Arc<Client>>,
   pub channel_id: Option<Id<ChannelMarker>>,
-  pub isolate: Option<Isolate>
+  pub isolate: Option<Arc<Isolate>>
 }
 
 impl ExecutionContext {

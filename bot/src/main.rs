@@ -5,6 +5,7 @@ pub mod object_storage;
 pub mod log;
 pub mod halt;
 pub mod time;
+pub mod sipi;
 mod execution_context;
 
 use std::{env, mem};
@@ -58,6 +59,7 @@ use crate::halt::HaltHandler;
 use crate::http::HttpHandler;
 use crate::log::LogHandler;
 use crate::object_storage::{ObjectStorage, ObjectStorageHandler};
+use crate::sipi::SipiHandler;
 use crate::time::TimeHandler;
 
 #[tokio::main]
@@ -196,7 +198,8 @@ use prelude::*;
       context.channel_id = Some(msg.channel_id);
       let bus = Arc::new(Bus::new(code));
       let isolate = context.isolate.insert(Isolate::new(bus));
-      let mut cpu = isolate.get_bootstrap_core().lock().await;
+      let cpu = isolate.get_bootstrap_core();
+      let mut cpu = cpu.lock().await;
       cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
         guild_id: msg.guild_id.unwrap(),
         channel_id: msg.channel_id,
@@ -230,58 +233,25 @@ use prelude::*;
       })));
       cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
       cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
+      cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler {})));
 
       loop {
-        let inst = match cpu.fetch() {
-          Ok(inst) => inst,
-          Err(exception) => {
-            cpu.handle_exception(exception);
-            if let Exception::InstructionAccessFault(0) = &exception {
-              break;
-            }
-            if exception.is_fatal() {
-              http.create_message(msg.channel_id).content(&format!("fetch failed: {:?}", exception))?.await?;
-              error!("fetch failed: {:?}", exception);
-              break;
-            }
-
-            break;
+        match cpu.run_tick().await? {
+          TickResult::Continue => continue,
+          TickResult::Exception(exception) => {
+            http.create_message(msg.channel_id).content(&format!("cpu exception: {:?}", exception))?.await?;
           }
-        };
-
-        match cpu.execute(inst).await {
-          Ok(new_pc) => cpu.pc = new_pc,
-          Err(exception) => {
-            cpu.handle_exception(exception);
-            if exception.is_fatal() {
-              http.create_message(msg.channel_id).content(&format!("execute failed: {:?}", exception))?.await?;
-              error!("execute failed: {:?}", exception);
-              break;
-            }
-            break;
+          TickResult::Eof => {
+            http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
           }
-        };
-        cpu.perf.instructions_retired += 1;
-        if cpu.halt {
-          break;
+          TickResult::Halt => {
+            http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
+          }
+          TickResult::TimeLimit(duration) => {
+            http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", duration, CPU_TIME_LIMIT))?.await?;
+          }
         }
-
-        if cpu.csr.load(csr::machine::POWERSTATE) == 1 && cpu.perf.cpu_time > CPU_TIME_LIMIT {
-          error!("running too long without yield: {:?} > {:?}", cpu.perf.cpu_time, CPU_TIME_LIMIT);
-          http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
-          break;
-        }
-
-        match cpu.check_pending_interrupt() {
-          Some(interrupt) => cpu.handle_interrupt(interrupt),
-          None => (),
-        }
-      }
-
-      if cpu.halt {
-        http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
-      } else {
-        http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
+        break;
       }
     }
     Event::MessageCreate(msg) => {
@@ -413,7 +383,8 @@ async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarke
   let context = context.lock().await;
   let http = context.http.as_ref().unwrap().clone();
   let channel_id = context.channel_id.as_ref().unwrap().clone();
-  let mut cpu = context.isolate.as_ref().unwrap().get_bootstrap_core().lock().await;
+  let cpu = context.isolate.as_ref().unwrap().get_bootstrap_core();
+  let mut cpu = cpu.lock().await;
 
   cpu.halt = false;
 
@@ -463,6 +434,69 @@ async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarke
     }
   }
   cpu.saved_regs.fill(0);
+}
+
+#[async_trait]
+pub trait CpuExt {
+  async fn run_tick(&mut self) -> Result<TickResult, Box<dyn Error + Send + Sync>>;
+}
+
+pub enum TickResult {
+  Continue,
+  Exception(Exception),
+  Eof,
+  Halt,
+  TimeLimit(Duration),
+}
+
+#[async_trait]
+impl CpuExt for Cpu {
+  async fn run_tick(&mut self) -> Result<TickResult, Box<dyn Error + Send + Sync>> {
+    let inst = match self.fetch() {
+      Ok(inst) => inst,
+      Err(exception) => {
+        self.handle_exception(exception);
+        if let Exception::InstructionAccessFault(0) = &exception {
+          return Ok(TickResult::Eof);
+        }
+        if exception.is_fatal() {
+          error!("fetch failed: {:?}", exception);
+          return Ok(TickResult::Exception(exception));
+        }
+
+        return Ok(TickResult::Exception(exception));
+      }
+    };
+
+    match self.execute(inst).await {
+      Ok(new_pc) => self.pc = new_pc,
+      Err(exception) => {
+        self.handle_exception(exception);
+        if exception.is_fatal() {
+          error!("execute failed: {:?}", exception);
+          return Ok(TickResult::Exception(exception));
+        }
+
+        return Ok(TickResult::Exception(exception));
+      }
+    };
+    self.perf.instructions_retired += 1;
+    if self.halt {
+      return Ok(TickResult::Halt);
+    }
+
+    if self.csr.load(csr::machine::POWERSTATE) == 1 && self.perf.cpu_time > CPU_TIME_LIMIT {
+      error!("running too long without yield: {:?} > {:?}", self.perf.cpu_time, CPU_TIME_LIMIT);
+      return Ok(TickResult::TimeLimit(self.perf.cpu_time));
+    }
+
+    match self.check_pending_interrupt() {
+      Some(interrupt) => self.handle_interrupt(interrupt),
+      None => (),
+    }
+
+    Ok(TickResult::Continue)
+  }
 }
 
 async fn generate_rv_obj() -> (String, String, bool) {

@@ -11,6 +11,7 @@ use crate::csr;
 use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SIE, MASK_SPIE, MASK_SPP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC, SATP, SCAUSE, SEPC, SSTATUS, STVAL, STVEC};
 use crate::exception::Exception;
 use crate::interrupt::Interrupt;
+use crate::isolate::Isolate;
 use crate::param::{DRAM_BASE, DRAM_SIZE};
 use crate::perf_counter::PerformanceCounter;
 
@@ -20,6 +21,7 @@ pub trait InterruptHandler: Send + Sync {
 }
 
 pub struct Cpu {
+  pub isolate: Option<Weak<Isolate>>,
   pub regs: [u64; 32],
   pub saved_regs: [u64; 32],
   pub fp_regs: [f64; 32],
@@ -34,7 +36,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-  pub fn new(bus: Arc<Bus>) -> Self {
+  pub fn new(bus: Arc<Bus>, isolate: Option<Weak<Isolate>>) -> Self {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
@@ -54,6 +56,7 @@ impl Cpu {
     let perf = PerformanceCounter::new();
 
     Cpu {
+      isolate,
       regs: registers,
       saved_regs: [0; 32],
       fp_regs: [0.0; 32],
