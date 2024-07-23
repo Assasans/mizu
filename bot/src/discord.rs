@@ -14,12 +14,12 @@ use hal_types::StringPtr;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::param::DRAM_BASE;
+use crate::execution_context::ExecutionContext;
 
 pub struct DiscordInterruptHandler {
+  pub context: Arc<ExecutionContext>,
   pub guild_id: Id<GuildMarker>,
-  pub channel_id: Id<ChannelMarker>,
   pub standby: Arc<Standby>,
-  pub http: Arc<Client>,
 }
 
 pub trait MemoryObject<T> {
@@ -44,12 +44,13 @@ impl InterruptHandler for DiscordInterruptHandler {
     let address = cpu.regs[11];
     debug!("discord call: id={} address=0x{:x}", id, address);
 
+    let http = self.context.http.lock().await.as_ref().unwrap().clone();
     match id {
       action::CREATE_MESSAGE => {
         let request = cpu.bus.read_struct::<discord_create_message_t>(address).unwrap();
         debug!("request: {:?}", request);
 
-        let mut builder = self.http.create_message(Id::new(request.channel_id));
+        let mut builder = http.create_message(Id::new(request.channel_id));
 
         let content = if !request.content.is_null() {
           Some(request.content.read(&mut cpu.bus))
@@ -92,7 +93,7 @@ impl InterruptHandler for DiscordInterruptHandler {
         let request = cpu.bus.read_struct::<discord_create_reaction_t>(address).unwrap();
         debug!("request: {:?}", request);
 
-        self.http.create_reaction(
+        http.create_reaction(
           Id::new(request.channel_id),
           Id::new(request.message_id),
           &RequestReactionType::Unicode { name: &request.emoji.read(&cpu.bus) },
@@ -103,7 +104,7 @@ impl InterruptHandler for DiscordInterruptHandler {
         let request = cpu.bus.read_struct::<discord_get_user_t>(address).unwrap();
         debug!("request: {:?}", request);
 
-        let response = self.http.user(Id::new(request.user_id))
+        let response = http.user(Id::new(request.user_id))
           .await.unwrap()
           .model().await.unwrap();
 

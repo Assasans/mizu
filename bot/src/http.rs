@@ -10,12 +10,10 @@ use twilight_standby::Standby;
 use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::param::DRAM_BASE;
+use crate::execution_context::ExecutionContext;
 
 pub struct HttpHandler {
-  pub guild_id: Id<GuildMarker>,
-  pub channel_id: Id<ChannelMarker>,
-  pub standby: Arc<Standby>,
-  pub http: Arc<Client>,
+  pub context: Arc<ExecutionContext>,
 }
 
 #[repr(C)]

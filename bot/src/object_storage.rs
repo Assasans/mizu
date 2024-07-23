@@ -11,6 +11,7 @@ use twilight_standby::Standby;
 use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::param::DRAM_BASE;
+use crate::execution_context::ExecutionContext;
 
 pub struct ObjectStorage {
   data: RwLock<HashMap<String, Vec<u8>>>,
@@ -33,10 +34,7 @@ impl ObjectStorage {
 }
 
 pub struct ObjectStorageHandler {
-  pub guild_id: Id<GuildMarker>,
-  pub channel_id: Id<ChannelMarker>,
-  pub standby: Arc<Standby>,
-  pub http: Arc<Client>,
+  pub context: Arc<ExecutionContext>,
   pub object_storage: Arc<ObjectStorage>,
 }
 

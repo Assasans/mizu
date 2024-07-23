@@ -7,22 +7,23 @@ use twilight_model::id::Id;
 use twilight_model::id::marker::{ChannelMarker, GuildMarker};
 use twilight_standby::Standby;
 use runtime::cpu::{Cpu, InterruptHandler};
+use crate::execution_context::ExecutionContext;
 
 pub struct LogHandler {
-  pub guild_id: Id<GuildMarker>,
-  pub channel_id: Id<ChannelMarker>,
-  pub standby: Arc<Standby>,
-  pub http: Arc<Client>,
+  pub context: Arc<ExecutionContext>,
 }
 
 #[async_trait]
 impl InterruptHandler for LogHandler {
   async fn handle(&self, cpu: &mut Cpu) {
+    let http = self.context.http.lock().await.as_ref().unwrap().clone();
+    let channel_id = self.context.channel_id.lock().await.unwrap();
+
     let address = cpu.regs[10];
     debug!("log address: 0x{:x}", address);
     let message = cpu.bus.read_string(address).unwrap().to_string_lossy().to_string();
     debug!("log message: {}", message);
-    self.http.create_message(self.channel_id)
+    http.create_message(channel_id)
       .content(&format!("sys_print: `{}`", message)).unwrap()
       .await.unwrap();
   }

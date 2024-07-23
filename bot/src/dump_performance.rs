@@ -1,28 +1,22 @@
 use std::sync::Arc;
 use async_trait::async_trait;
 use runtime::bus::BusMemoryExt;
-use runtime::csr::MCAUSE;
-use runtime::exception::Exception;
 use runtime::interrupt::Interrupt;
-use tracing::error;
-use twilight_http::Client;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker};
-use twilight_standby::Standby;
 use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
 use runtime::cpu::{Cpu, InterruptHandler};
+use crate::execution_context::ExecutionContext;
 
 pub struct DumpPerformanceHandler {
-  pub guild_id: Id<GuildMarker>,
-  pub channel_id: Id<ChannelMarker>,
-  pub standby: Arc<Standby>,
-  pub http: Arc<Client>,
+  pub context: Arc<ExecutionContext>,
 }
 
 #[async_trait]
 impl InterruptHandler for DumpPerformanceHandler {
   async fn handle(&self, cpu: &mut Cpu) {
-    self.http.create_message(self.channel_id)
+    let http = self.context.http.lock().await.as_ref().unwrap().clone();
+    let channel_id = self.context.channel_id.lock().await.unwrap();
+
+    http.create_message(channel_id)
       .content(&format!("performance dump: ```c\nperf={:?}\npc = 0x{:x}```", cpu.perf, cpu.pc)).unwrap()
       .await.unwrap();
     cpu.perf.reset();
@@ -40,7 +34,7 @@ impl InterruptHandler for DumpPerformanceHandler {
     cpu.saved_regs.fill(0);
     cpu.bus.write_string(ptr, "the fog is coming shit").unwrap();
 
-    self.http.create_message(self.channel_id)
+    http.create_message(channel_id)
       .content(&format!("allocated: `0x{:x}`", ptr)).unwrap()
       .await.unwrap();
   }

@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 }
 
 pub struct Contexts {
-  pub contexts: RwLock<HashMap<Id<GuildMarker>, Arc<Mutex<ExecutionContext>>>>,
+  pub contexts: RwLock<HashMap<Id<GuildMarker>, Arc<ExecutionContext>>>,
 }
 
 impl Contexts {
@@ -159,53 +159,32 @@ use prelude::*;
       let context = {
         let mut contexts = contexts.contexts.write().await;
         let context = contexts.entry(msg.guild_id.unwrap());
-        context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
+        context.or_insert_with(|| Arc::new(ExecutionContext::new())).clone()
       };
+      *context.http.lock().await = Some(http.clone());
+      *context.channel_id.lock().await = Some(msg.channel_id);
+
+      let http = context.http.lock().await.clone().unwrap();
 
       let code = compile(&code, &msg, &http).await?;
       let bus = Arc::new(Bus::new(code));
-      let isolate = {
-        let mut context = context.lock().await;
-        context.http = Some(http.clone());
-        context.channel_id = Some(msg.channel_id);
-
-        context.isolate.insert(Isolate::new(bus)).clone()
-      };
+      let isolate = context.isolate.lock().await.insert(Isolate::new(bus)).clone();
 
       {
         let cpu = isolate.get_bootstrap_core();
         let mut cpu = cpu.lock().await;
         cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+          context: context.clone(),
           guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
           standby: standby.clone(),
-          http: http.clone(),
         })));
-        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
+        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler { context: context.clone() })));
+        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler { context: context.clone() })));
         cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
+          context: context.clone(),
           object_storage: object_storage.clone(),
         })));
-        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
+        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler { context: context.clone() })));
         cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
         cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
         cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler {})));
@@ -256,39 +235,12 @@ use prelude::*;
         return Ok(());
       }
 
-      dispatch_interrupt(&contexts, msg.guild_id.unwrap(), |cpu| {
+      dispatch_interrupt(&contexts, msg.guild_id.unwrap(), |context, cpu| {
         cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+          context: context.clone(),
           guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
           standby: standby.clone(),
-          http: http.clone(),
         })));
-        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-          object_storage: object_storage.clone(),
-        })));
-        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
-          guild_id: msg.guild_id.unwrap(),
-          channel_id: msg.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
 
         let event = discord_message_t {
           id: msg.id.get(),
@@ -308,39 +260,12 @@ use prelude::*;
         return Ok(());
       }
 
-      dispatch_interrupt(&contexts, reaction.guild_id.unwrap(), |cpu| {
+      dispatch_interrupt(&contexts, reaction.guild_id.unwrap(), |context, cpu| {
         cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+          context: context.clone(),
           guild_id: reaction.guild_id.unwrap(),
-          channel_id: reaction.channel_id,
           standby: standby.clone(),
-          http: http.clone(),
         })));
-        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
-          guild_id: reaction.guild_id.unwrap(),
-          channel_id: reaction.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
-          guild_id: reaction.guild_id.unwrap(),
-          channel_id: reaction.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
-          guild_id: reaction.guild_id.unwrap(),
-          channel_id: reaction.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-          object_storage: object_storage.clone(),
-        })));
-        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
-          guild_id: reaction.guild_id.unwrap(),
-          channel_id: reaction.channel_id,
-          standby: standby.clone(),
-          http: http.clone(),
-        })));
-        cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
 
         if let ReactionType::Unicode { name } = &reaction.emoji {
           let event = discord_event_add_reaction_t {
@@ -409,22 +334,20 @@ async fn compile(code: &str, msg: &Message, http: &Client) -> Result<Vec<u8>, Bo
   Ok(fs::read(format!("{}.bin", binary_filename)).await?)
 }
 
-async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarker>, block: impl FnOnce(&mut Cpu) -> (u64, T)) {
+async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarker>, block: impl FnOnce(Arc<ExecutionContext>, &mut Cpu) -> (u64, T)) {
   info!("dispatch int");
   let context = {
     let mut contexts = contexts.contexts.write().await;
     let context = contexts.entry(guild_id);
-    context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
+    context.or_insert_with(|| Arc::new(ExecutionContext::new())).clone()
   };
-  let context = context.lock().await;
-  let http = context.http.as_ref().unwrap().clone();
-  let channel_id = context.channel_id.as_ref().unwrap().clone();
-  let cpu = context.isolate.as_ref().unwrap().get_bootstrap_core();
+  let isolate = context.isolate.lock().await;
+  let cpu = isolate.as_ref().unwrap().get_bootstrap_core();
   let mut cpu = cpu.lock().await;
 
   cpu.halt = false;
 
-  let (id, event) = block(&mut cpu);
+  let (id, event) = block(context.clone(), &mut cpu);
   cpu.bus.write_struct(HARDWARE_BASE + 0x16000, &event).unwrap();
   cpu.regs[10] = id;
   cpu.regs[11] = HARDWARE_BASE + 0x16000;
@@ -449,7 +372,7 @@ pub enum TickResult {
   Eof,
   Halt,
   TimeLimit,
-  WaitForInterrupt
+  WaitForInterrupt,
 }
 
 #[async_trait]
