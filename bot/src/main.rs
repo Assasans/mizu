@@ -226,7 +226,7 @@ use prelude::*;
           match cpu.run_tick().await? {
             TickResult::Continue => continue,
             TickResult::Exception(exception) => {
-              http.create_message(msg.channel_id).content(&format!("cpu exception: {:?}", exception))?.await?;
+              http.create_message(msg.channel_id).content(&format!("cpu exception: {}", exception))?.await?;
             }
             TickResult::Eof => {
               http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;

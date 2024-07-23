@@ -571,6 +571,46 @@ impl Cpu {
             self.perf.end_cpu_time();
             return self.update_pc();
           }
+          (0x3, 0x04) => {
+            // amoxor.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, t ^ self.regs[rs2])?;
+            self.regs[rd] = t;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x3, 0x08) => {
+            // amoor.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, t | self.regs[rs2])?;
+            self.regs[rd] = t;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x3, 0x12) => {
+            // amoand.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, t & self.regs[rs2])?;
+            self.regs[rd] = t;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x3, 0x10) => {
+            // amomin.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, t.min(self.regs[rs2]))?;
+            self.regs[rd] = t;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x3, 0x14) => {
+            // amomax.d
+            let t = self.load(self.regs[rs1], 64)?;
+            self.store(self.regs[rs1], 64, t.max(self.regs[rs2]))?;
+            self.regs[rd] = t;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
