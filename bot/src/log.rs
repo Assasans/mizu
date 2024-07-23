@@ -24,7 +24,7 @@ impl InterruptHandler for LogHandler {
     let message = cpu.bus.read_string(address).unwrap().to_string_lossy().to_string();
     debug!("log message: {}", message);
     http.create_message(channel_id)
-      .content(&format!("sys_print: `{}`", message)).unwrap()
+      .content(&format!("sys_print cpu {}: `{}`", cpu.id, message)).unwrap()
       .await.unwrap();
   }
 }

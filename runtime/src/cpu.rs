@@ -24,6 +24,7 @@ pub trait InterruptHandler: Send + Sync {
 }
 
 pub struct Cpu {
+  pub id: u16,
   pub isolate: Option<Weak<Isolate>>,
   pub regs: [u64; 32],
   pub saved_regs: [u64; 32],
@@ -41,7 +42,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-  pub fn new(bus: Arc<Bus>, isolate: Option<Weak<Isolate>>) -> Self {
+  pub fn new(id: u16, bus: Arc<Bus>, isolate: Option<Weak<Isolate>>) -> Self {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
@@ -62,6 +63,7 @@ impl Cpu {
     let perf = PerformanceCounter::new();
 
     Cpu {
+      id,
       isolate,
       regs: registers,
       saved_regs: [0; 32],
@@ -98,6 +100,7 @@ impl Cpu {
 
   pub fn dump(&self) -> String {
     let mut output = String::new();
+    output.write_fmt(format_args!("cpu={:<#18}\n", self.id)).unwrap();
     output.write_fmt(format_args!("cpu_time={:<#18?} insts_retired={}\n", self.perf.cpu_time, self.perf.instructions_retired)).unwrap();
     output.write_fmt(format_args!("pc={:<#18x}       mepc={:<#18x}\n", self.pc, self.csr.load(MEPC))).unwrap();
 

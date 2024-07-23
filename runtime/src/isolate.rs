@@ -6,17 +6,17 @@ use crate::cpu::Cpu;
 
 pub struct Isolate {
   pub bus: Arc<Bus>,
-  pub cores: std::sync::Mutex<Vec<Arc<Mutex<Cpu>>>>
+  pub cores: std::sync::Mutex<Vec<Arc<Mutex<Cpu>>>>,
 }
 
 impl Isolate {
   pub fn new(bus: Arc<Bus>) -> Arc<Self> {
     let this = Arc::new(Self {
       bus,
-      cores: std::sync::Mutex::new(Vec::new())
+      cores: std::sync::Mutex::new(Vec::new()),
     });
 
-    this.add_core(Cpu::new(this.bus.clone(), Some(Arc::downgrade(&this))));
+    this.add_core(Cpu::new(0, this.bus.clone(), Some(Arc::downgrade(&this))));
     this
   }
 
@@ -24,10 +24,12 @@ impl Isolate {
     self.cores.lock().unwrap()[0].clone()
   }
 
-  pub fn add_core(&self, core: Cpu) {
-    let mut cores =self.cores.lock().unwrap();
-    cores.push(Arc::new(Mutex::new(core)));
+  pub fn add_core(&self, core: Cpu) -> Arc<Mutex<Cpu>> {
+    let mut cores = self.cores.lock().unwrap();
+    let core = Arc::new(Mutex::new(core));
+    cores.push(core.clone());
     info!("added core {}", cores.len() - 1);
+    core
   }
 
   pub fn wake(&self) {

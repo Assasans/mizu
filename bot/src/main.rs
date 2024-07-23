@@ -186,7 +186,7 @@ use prelude::*;
         cpu.ivt.insert(14, Arc::new(Box::new(LogHandler { context: context.clone() })));
         cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
         cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
-        cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler {})));
+        cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler { context: context.clone() })));
       }
 
       context.run_core(isolate.get_bootstrap_core()).await?;

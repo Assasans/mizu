@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::{debug, info};
 use twilight_http::Client;
 use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
@@ -25,6 +26,7 @@ impl ExecutionContext {
   }
 
   pub async fn run_core(&self, cpu: Arc<Mutex<Cpu>>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    debug!("starting core loop");
     let channel_id = self.channel_id.lock().await.unwrap();
     let http = self.http.lock().await.clone().unwrap();
 
@@ -32,6 +34,7 @@ impl ExecutionContext {
       let mut cpu = cpu.lock().await;
       cpu.wfi.clone()
     };
+    info!("started core loop");
     'wfi: loop {
       wfi.wait_for(|wfi| *wfi == false).await;
       http.create_message(channel_id).content(&format!("wfi: reset"))?.await?;
@@ -41,16 +44,16 @@ impl ExecutionContext {
         match cpu.run_tick().await? {
           TickResult::Continue => continue,
           TickResult::Exception(exception) => {
-            http.create_message(channel_id).content(&format!("cpu: exception: {}", exception))?.await?;
+            http.create_message(channel_id).content(&format!("cpu {}: exception: {}", cpu.id, exception))?.await?;
           }
           TickResult::Eof => {
-            http.create_message(channel_id).content(&format!("cpu: execution finished ```c\n{}```", cpu.dump()))?.await?;
+            http.create_message(channel_id).content(&format!("cpu {}: execution finished ```c\n{}```", cpu.id, cpu.dump()))?.await?;
           }
           TickResult::Halt => {
-            http.create_message(channel_id).content(&format!("cpu: execution halted ```c\n{}```", cpu.dump()))?.await?;
+            http.create_message(channel_id).content(&format!("cpu {}: execution halted ```c\n{}```", cpu.id, cpu.dump()))?.await?;
           }
           TickResult::TimeLimit => {
-            http.create_message(channel_id).content(&format!("cpu: running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+            http.create_message(channel_id).content(&format!("cpu {}: running too long without yield: `{:?} > {:?}`", cpu.id, cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
           }
           TickResult::WaitForInterrupt => {
             http.create_message(channel_id).content(&format!("wfi: waiting for interrupt at `{:#08x}`", cpu.pc))?.await?;
