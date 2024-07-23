@@ -247,8 +247,8 @@ use prelude::*;
           TickResult::Halt => {
             http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
           }
-          TickResult::TimeLimit(duration) => {
-            http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", duration, CPU_TIME_LIMIT))?.await?;
+          TickResult::TimeLimit => {
+            http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
           }
         }
         break;
@@ -446,7 +446,7 @@ pub enum TickResult {
   Exception(Exception),
   Eof,
   Halt,
-  TimeLimit(Duration),
+  TimeLimit,
 }
 
 #[async_trait]
@@ -487,7 +487,7 @@ impl CpuExt for Cpu {
 
     if self.csr.load(csr::machine::POWERSTATE) == 1 && self.perf.cpu_time > CPU_TIME_LIMIT {
       error!("running too long without yield: {:?} > {:?}", self.perf.cpu_time, CPU_TIME_LIMIT);
-      return Ok(TickResult::TimeLimit(self.perf.cpu_time));
+      return Ok(TickResult::TimeLimit);
     }
 
     match self.check_pending_interrupt() {

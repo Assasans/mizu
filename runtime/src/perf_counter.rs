@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use minstant::Instant;
 
 pub const CPU_TIME_LIMIT: Duration = Duration::from_millis(10);
 
@@ -6,7 +7,7 @@ pub const CPU_TIME_LIMIT: Duration = Duration::from_millis(10);
 pub struct PerformanceCounter {
   pub cpu_time: Duration,
   cpu_time_start: Option<Instant>,
-  pub instructions_retired: u64
+  pub instructions_retired: u64,
 }
 
 impl PerformanceCounter {
@@ -14,7 +15,7 @@ impl PerformanceCounter {
     PerformanceCounter {
       cpu_time: Duration::default(),
       cpu_time_start: None,
-      instructions_retired: 0
+      instructions_retired: 0,
     }
   }
 
@@ -30,6 +31,9 @@ impl PerformanceCounter {
   }
 
   pub fn end_cpu_time(&mut self) {
-    self.cpu_time += Instant::now() - self.cpu_time_start.take().unwrap();
+    let now = Instant::now();
+    let start = self.cpu_time_start.take().unwrap();
+    // let elapsed = ((now.0 - start.0) as f64 * minstant::nanos_per_cycle()) as u64;
+    self.cpu_time += now - start;
   }
 }
