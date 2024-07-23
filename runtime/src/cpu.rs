@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::future::Future;
 use std::ops::{Div, Rem};
 use std::pin::Pin;
@@ -72,7 +73,7 @@ impl Cpu {
       ivt,
       perf,
       halt: false,
-      wfi: StateFlow::new(false)
+      wfi: StateFlow::new(false),
     }
   }
 
@@ -93,6 +94,42 @@ impl Cpu {
       Ok(inst) => Ok(inst),
       Err(_e) => Err(Exception::InstructionAccessFault(self.pc)),
     }
+  }
+
+  pub fn dump(&self) -> String {
+    let mut output = String::new();
+    output.write_fmt(format_args!("cpu_time={:<#18?} insts_retired={}\n", self.perf.cpu_time, self.perf.instructions_retired)).unwrap();
+    output.write_fmt(format_args!("pc={:<#18x}       mepc={:<#18x}\n", self.pc, self.csr.load(MEPC))).unwrap();
+
+    let registers = [
+      (1, "ra"),
+      (2, "sp"),
+      (10, "a0"),
+      (17, "a7"),
+    ];
+    for chunk in registers.chunks(4) {
+      output.push_str(&chunk.iter().map(|(index, name)| {
+        let value = self.regs[*index];
+        format!("x{:02}→{}={:<#18x}", index, name, value)
+      }).map(|it| format!("{:<26}", it)).collect::<Vec<_>>().join("  "));
+      output.push_str("\n");
+    }
+
+    let csrs = [
+      (MSTATUS, "mstatus"),
+      (MTVEC, "mtvec"),
+      (MCAUSE, "mcause"),
+      (csr::machine::POWERSTATE, "mpowerstate"),
+    ];
+    for chunk in csrs.chunks(4) {
+      output.push_str(&chunk.iter().map(|(address, name)| {
+        let value = self.csr.load(*address);
+        format!("{}={:<#18x}", name, value)
+      }).map(|it| format!("{:<26}", it)).collect::<Vec<_>>().join("  "));
+      output.push_str("\n");
+    }
+
+    output
   }
 
   pub fn dump_registers(&self) -> String {
@@ -362,7 +399,7 @@ impl Cpu {
             Err(Exception::IllegalInstruction(inst))
           }
         }
-      },
+      }
       0x13 => {
         // imm[11:0] = inst[31:20]
         let imm = ((inst & 0xfff00000) as i32 as i64 >> 20) as u64;
@@ -476,13 +513,13 @@ impl Cpu {
               _ => {
                 self.perf.end_cpu_time();
                 Err(Exception::IllegalInstruction(inst))
-              },
+              }
             }
           }
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
-          },
+          }
         }
       }
       0x23 => {
@@ -532,7 +569,7 @@ impl Cpu {
             Err(Exception::IllegalInstruction(inst))
           }
         }
-      },
+      }
       0x2f => {
         // RV64A: "A" standard extension for atomic instructions
         let funct5 = (funct7 & 0b1111100) >> 2;
@@ -614,7 +651,7 @@ impl Cpu {
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
-          },
+          }
         }
       }
       0x33 => {
@@ -716,7 +753,7 @@ impl Cpu {
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
-          },
+          }
         }
       }
       0x37 => {
@@ -780,7 +817,7 @@ impl Cpu {
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
-          },
+          }
         }
       }
       0x53 => {
@@ -833,7 +870,7 @@ impl Cpu {
             Err(Exception::IllegalInstruction(inst))
           }
         }
-      },
+      }
       0x63 => {
         // imm[12|10:5|4:1|11] = inst[31|30:25|11:8|7]
         let imm = (((inst & 0x80000000) as i32 as i64 >> 19) as u64)
@@ -899,7 +936,7 @@ impl Cpu {
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
-          },
+          }
         }
       }
       0x67 => {
@@ -1004,7 +1041,7 @@ impl Cpu {
               _ => {
                 self.perf.end_cpu_time();
                 Err(Exception::IllegalInstruction(inst))
-              },
+              }
             }
           }
           0x1 => {
@@ -1060,13 +1097,13 @@ impl Cpu {
           _ => {
             self.perf.end_cpu_time();
             Err(Exception::IllegalInstruction(inst))
-          },
+          }
         }
       }
       _ => {
         self.perf.end_cpu_time();
         Err(Exception::IllegalInstruction(inst))
-      },
+      }
     }
   }
 }

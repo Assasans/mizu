@@ -226,16 +226,16 @@ use prelude::*;
           match cpu.run_tick().await? {
             TickResult::Continue => continue,
             TickResult::Exception(exception) => {
-              http.create_message(msg.channel_id).content(&format!("cpu exception: {}", exception))?.await?;
+              http.create_message(msg.channel_id).content(&format!("cpu: exception: {}", exception))?.await?;
             }
             TickResult::Eof => {
-              http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
+              http.create_message(msg.channel_id).content(&format!("cpu: execution finished ```c\n{}```", cpu.dump()))?.await?;
             }
             TickResult::Halt => {
-              http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
+              http.create_message(msg.channel_id).content(&format!("cpu: execution halted ```c\n{}```", cpu.dump()))?.await?;
             }
             TickResult::TimeLimit => {
-              http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+              http.create_message(msg.channel_id).content(&format!("cpu: running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
             }
             TickResult::WaitForInterrupt => {
               http.create_message(msg.channel_id).content(&format!("wfi: waiting for interrupt at `{:#08x}`", cpu.pc))?.await?;
