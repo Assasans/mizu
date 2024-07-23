@@ -7,6 +7,8 @@ pub mod csr;
 pub mod interrupt;
 pub mod perf_counter;
 pub mod isolate;
+pub mod apic;
+pub mod state_flow;
 
 #[cfg(test)]
 mod tests {

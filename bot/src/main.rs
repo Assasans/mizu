@@ -37,12 +37,15 @@ use twilight_model::gateway::event::Event;
 use twilight_model::http::attachment::Attachment;
 use twilight_standby::Standby;
 use regex::{Captures, Regex};
+use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
+use twilight_model::channel::Message;
 use twilight_model::channel::message::ReactionType;
 use twilight_model::id::Id;
 use twilight_model::id::marker::GuildMarker;
 use hal_types::discord::{action, discord_create_reaction_t, discord_event_add_reaction_t, discord_message_t};
 use hal_types::StringPtr;
+use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::Cpu;
 use runtime::csr;
@@ -158,104 +161,93 @@ use prelude::*;
         let context = contexts.entry(msg.guild_id.unwrap());
         context.or_insert_with(|| Arc::new(Mutex::new(ExecutionContext::new()))).clone()
       };
-      let mut context = context.lock().await;
 
-      let code_filename = "temp/src/main.rs";
-      fs::write(code_filename, code).await?;
-      let (binary_filename, compile_error, success) = generate_rv_obj().await;
-      if !success {
-        let attachments = if compile_error.len() > 1600 {
-          vec![Attachment::from_bytes("error.log".to_owned(), compile_error.as_bytes().to_owned(), 1)]
-        } else {
-          vec![]
-        };
+      let code = compile(&code, &msg, &http).await?;
+      let bus = Arc::new(Bus::new(code));
+      let isolate = {
+        let mut context = context.lock().await;
+        context.http = Some(http.clone());
+        context.channel_id = Some(msg.channel_id);
 
-        if compile_error.len() > 1800 {
-          http.create_message(msg.channel_id)
-            .content("compilation failed").unwrap()
-            .attachments(&attachments)?.await?;
-        } else {
-          http.create_message(msg.channel_id).content(&format!("compilation failed: ```c\n{}```", compile_error))?.await?;
-        }
-        return Ok(());
+        context.isolate.insert(Isolate::new(bus)).clone()
+      };
+
+      {
+        let cpu = isolate.get_bootstrap_core();
+        let mut cpu = cpu.lock().await;
+        cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+          object_storage: object_storage.clone(),
+        })));
+        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
+          guild_id: msg.guild_id.unwrap(),
+          channel_id: msg.channel_id,
+          standby: standby.clone(),
+          http: http.clone(),
+        })));
+        cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
+        cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
+        cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler {})));
       }
 
-      let assembly = get_disassembled(&binary_filename).await;
-      let assembly = Regex::new(r"(?m)^ffffffff80[0-9a-f]{6}").unwrap().replace_all(&assembly, |captures: &Captures| {
-        let address = u64::from_str_radix(captures.get(0).unwrap().as_str(), 16).unwrap();
-        let base_address = 0xffffffff80000000u64;
-        format!("${:04x}", address - base_address)
-      });
-      // http.create_message(msg.channel_id).content(&format!(
-      //   "compilation successful: ```mips\n{}```",
-      //   if assembly.len() > 1800 { "; too long" } else { &assembly }
-      // ))?.await?;
-      // debug!("{}", assembly);
+      let wfi = {
+        let cpu = isolate.get_bootstrap_core();
+        let mut cpu = cpu.lock().await;
+        cpu.wfi.clone()
+      };
+      'wfi: loop {
+        wfi.wait_for(|wfi| *wfi == false).await;
+        http.create_message(msg.channel_id).content(&format!("wfi: reset"))?.await?;
 
-      generate_rv_binary(&binary_filename).await;
-      let code = fs::read(format!("{}.bin", binary_filename)).await?;
-      context.http = Some(http.clone());
-      context.channel_id = Some(msg.channel_id);
-      let bus = Arc::new(Bus::new(code));
-      let isolate = context.isolate.insert(Isolate::new(bus));
-      let cpu = isolate.get_bootstrap_core();
-      let mut cpu = cpu.lock().await;
-      cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
-        guild_id: msg.guild_id.unwrap(),
-        channel_id: msg.channel_id,
-        standby: standby.clone(),
-        http: http.clone(),
-      })));
-      cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler {
-        guild_id: msg.guild_id.unwrap(),
-        channel_id: msg.channel_id,
-        standby: standby.clone(),
-        http: http.clone(),
-      })));
-      cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler {
-        guild_id: msg.guild_id.unwrap(),
-        channel_id: msg.channel_id,
-        standby: standby.clone(),
-        http: http.clone(),
-      })));
-      cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
-        guild_id: msg.guild_id.unwrap(),
-        channel_id: msg.channel_id,
-        standby: standby.clone(),
-        http: http.clone(),
-        object_storage: object_storage.clone(),
-      })));
-      cpu.ivt.insert(14, Arc::new(Box::new(LogHandler {
-        guild_id: msg.guild_id.unwrap(),
-        channel_id: msg.channel_id,
-        standby: standby.clone(),
-        http: http.clone(),
-      })));
-      cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
-      cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
-      cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler {})));
-
-      loop {
-        match cpu.run_tick().await? {
-          TickResult::Continue => continue,
-          TickResult::Exception(exception) => {
-            http.create_message(msg.channel_id).content(&format!("cpu exception: {:?}", exception))?.await?;
+        let cpu = isolate.get_bootstrap_core();
+        let mut cpu = cpu.lock().await;
+        loop {
+          match cpu.run_tick().await? {
+            TickResult::Continue => continue,
+            TickResult::Exception(exception) => {
+              http.create_message(msg.channel_id).content(&format!("cpu exception: {:?}", exception))?.await?;
+            }
+            TickResult::Eof => {
+              http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
+            }
+            TickResult::Halt => {
+              http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
+            }
+            TickResult::TimeLimit => {
+              http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
+            }
+            TickResult::WaitForInterrupt => {
+              http.create_message(msg.channel_id).content(&format!("wfi: waiting for interrupt at `{:#08x}`", cpu.pc))?.await?;
+              continue 'wfi;
+            }
           }
-          TickResult::Eof => {
-            http.create_message(msg.channel_id).content(&format!("execution finished: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
-          }
-          TickResult::Halt => {
-            http.create_message(msg.channel_id).content(&format!("execution halted: ```c\n// register dump\nperf={:?}\npc = 0x{:x}{}\n{}```", cpu.perf, cpu.pc, cpu.dump_registers(), cpu.csr.dump_csrs()))?.await?;
-          }
-          TickResult::TimeLimit => {
-            http.create_message(msg.channel_id).content(&format!("running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
-          }
+          break 'wfi;
         }
-        break;
       }
     }
     Event::MessageCreate(msg) => {
-      debug!("create message: {:?}", msg);
+      debug!("create message: {:?}", msg.id);
       if msg.author.bot || msg.content.len() > 200 {
         return Ok(());
       }
@@ -374,7 +366,51 @@ use prelude::*;
   Ok(())
 }
 
+#[derive(Error, Debug)]
+pub enum CompileError {
+  #[error("compilation failed")]
+  Error
+}
+
+async fn compile(code: &str, msg: &Message, http: &Client) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> {
+  let code_filename = "temp/src/main.rs";
+  fs::write(code_filename, code).await?;
+  let (binary_filename, compile_error, success) = generate_rv_obj().await;
+  if !success {
+    let attachments = if compile_error.len() > 1600 {
+      vec![Attachment::from_bytes("error.log".to_owned(), compile_error.as_bytes().to_owned(), 1)]
+    } else {
+      vec![]
+    };
+
+    if compile_error.len() > 1800 {
+      http.create_message(msg.channel_id)
+        .content("compilation failed").unwrap()
+        .attachments(&attachments)?.await?;
+    } else {
+      http.create_message(msg.channel_id).content(&format!("compilation failed: ```c\n{}```", compile_error))?.await?;
+    }
+    return Err(Box::new(CompileError::Error));
+  }
+
+  let assembly = get_disassembled(&binary_filename).await;
+  let assembly = Regex::new(r"(?m)^ffffffff80[0-9a-f]{6}").unwrap().replace_all(&assembly, |captures: &Captures| {
+    let address = u64::from_str_radix(captures.get(0).unwrap().as_str(), 16).unwrap();
+    let base_address = 0xffffffff80000000u64;
+    format!("${:04x}", address - base_address)
+  });
+  // http.create_message(msg.channel_id).content(&format!(
+  //   "compilation successful: ```mips\n{}```",
+  //   if assembly.len() > 1800 { "; too long" } else { &assembly }
+  // ))?.await?;
+  // debug!("{}", assembly);
+
+  generate_rv_binary(&binary_filename).await;
+  Ok(fs::read(format!("{}.bin", binary_filename)).await?)
+}
+
 async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarker>, block: impl FnOnce(&mut Cpu) -> (u64, T)) {
+  info!("dispatch int");
   let context = {
     let mut contexts = contexts.contexts.write().await;
     let context = contexts.entry(guild_id);
@@ -393,47 +429,13 @@ async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarke
   cpu.regs[10] = id;
   cpu.regs[11] = HARDWARE_BASE + 0x16000;
 
-  cpu.handle_interrupt(Interrupt::PlatformDefined17);
-  loop {
-    let inst = match cpu.fetch() {
-      Ok(inst) => inst,
-      Err(exception) => {
-        cpu.handle_exception(exception);
-        if let Exception::InstructionAccessFault(0) = &exception {
-          break;
-        }
-        if exception.is_fatal() {
-          http.create_message(channel_id).content(&format!("fetch failed: {:?}", exception)).unwrap().await.unwrap();
-          error!("fetch failed: {:?}", exception);
-          break;
-        }
+  info!("dispatching interrupt");
+  cpu.apic.dispatch(Interrupt::PlatformDefined17, INTERRUPT_PRIORITY_NORMAL);
+  info!("resetting wfi");
+  cpu.wfi.set(false);
 
-        break;
-      }
-    };
-
-    match cpu.execute(inst).await {
-      Ok(new_pc) => cpu.pc = new_pc,
-      Err(exception) => {
-        cpu.handle_exception(exception);
-        if exception.is_fatal() {
-          http.create_message(channel_id).content(&format!("execute failed: {:?}", exception)).unwrap().await.unwrap();
-          error!("execute failed: {:?}", exception);
-          break;
-        }
-        break;
-      }
-    };
-    cpu.perf.instructions_retired += 1;
-    if cpu.halt {
-      break;
-    }
-    if cpu.csr.load(MCAUSE) == 0 {
-      error!("exited from trap");
-      break; // Exited from trap
-    }
-  }
-  cpu.saved_regs.fill(0);
+  let isolate = cpu.isolate.as_ref().unwrap().upgrade().unwrap();
+  isolate.wake();
 }
 
 #[async_trait]
@@ -447,11 +449,16 @@ pub enum TickResult {
   Eof,
   Halt,
   TimeLimit,
+  WaitForInterrupt
 }
 
 #[async_trait]
 impl CpuExt for Cpu {
   async fn run_tick(&mut self) -> Result<TickResult, Box<dyn Error + Send + Sync>> {
+    if self.wfi.get() {
+      return Ok(TickResult::WaitForInterrupt);
+    }
+
     let inst = match self.fetch() {
       Ok(inst) => inst,
       Err(exception) => {
@@ -480,6 +487,7 @@ impl CpuExt for Cpu {
         return Ok(TickResult::Exception(exception));
       }
     };
+
     self.perf.instructions_retired += 1;
     if self.halt {
       return Ok(TickResult::Halt);
@@ -489,6 +497,12 @@ impl CpuExt for Cpu {
       error!("running too long without yield: {:?} > {:?}", self.perf.cpu_time, CPU_TIME_LIMIT);
       return Ok(TickResult::TimeLimit);
     }
+
+    // if self.csr.load(MCAUSE) == 0 {
+    //   error!("exited from trap");
+    //   self.saved_regs.fill(0);
+    //   return Ok(TickResult::Continue); // Exited from trap
+    // }
 
     match self.check_pending_interrupt() {
       Some(interrupt) => self.handle_interrupt(interrupt),

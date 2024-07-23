@@ -5,7 +5,7 @@ extern "C" {
   pub static __IVT_START: c_void;
 }
 
-pub unsafe fn init_ivt_vector(address: *const c_void) {
+pub unsafe fn __init_ivt_vector(address: *const c_void) {
   let mut pointer = address as u64;
   pointer |= 1; // Use vector mode
 
@@ -13,4 +13,8 @@ pub unsafe fn init_ivt_vector(address: *const c_void) {
   "csrrw zero, mtvec, t0",
   in("t0") pointer
   );
+}
+
+pub unsafe fn __wfi() {
+  asm!("wfi");
 }

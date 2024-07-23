@@ -6,6 +6,7 @@ use std::sync::{Arc, Weak};
 use std::time::Instant;
 use async_trait::async_trait;
 use tracing::{debug, info, trace};
+use crate::apic::Apic;
 use crate::bus::Bus;
 use crate::csr;
 use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SIE, MASK_SPIE, MASK_SPP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC, SATP, SCAUSE, SEPC, SSTATUS, STVAL, STVEC};
@@ -14,6 +15,7 @@ use crate::interrupt::Interrupt;
 use crate::isolate::Isolate;
 use crate::param::{DRAM_BASE, DRAM_SIZE};
 use crate::perf_counter::PerformanceCounter;
+use crate::state_flow::StateFlow;
 
 #[async_trait]
 pub trait InterruptHandler: Send + Sync {
@@ -27,12 +29,14 @@ pub struct Cpu {
   pub fp_regs: [f64; 32],
   pub pc: u64,
   pub bus: Arc<Bus>,
+  pub apic: Apic,
   /// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
   /// up to 4096 CSRs.
   pub csr: Csr,
   pub ivt: HashMap<u64, Arc<Box<dyn InterruptHandler>>>,
   pub perf: PerformanceCounter,
-  pub halt: bool
+  pub halt: bool,
+  pub wfi: StateFlow<bool>,
 }
 
 impl Cpu {
@@ -52,6 +56,7 @@ impl Cpu {
     let mut csr = Csr::new(Box::new(time));
     csr.store(csr::machine::POWERSTATE, 1);
 
+    let apic = Apic::new();
     let ivt = HashMap::new();
     let perf = PerformanceCounter::new();
 
@@ -62,10 +67,12 @@ impl Cpu {
       fp_regs: [0.0; 32],
       pc,
       bus,
+      apic,
       csr,
       ivt,
       perf,
-      halt: false
+      halt: false,
+      wfi: StateFlow::new(false)
     }
   }
 
@@ -245,7 +252,11 @@ impl Cpu {
       return Some(SupervisorTimerInterrupt);
     }
 
-    return None;
+    let interrupt = self.apic.get();
+    if interrupt.is_some() {
+      info!("apic interrupt: {:?}", interrupt);
+    }
+    interrupt
   }
 
   #[inline]
@@ -936,6 +947,13 @@ impl Cpu {
                 self.perf.end_cpu_time();
                 return Ok(self.pc);
                 // return self.update_pc();
+              }
+              (0x5, 0x8) => {
+                // wfi
+                info!("waiting for interrupt");
+                self.wfi.set(true);
+                self.perf.end_cpu_time();
+                return self.update_pc();
               }
               (_, 0x9) => {
                 // sfence.vma

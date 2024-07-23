@@ -29,4 +29,8 @@ impl Isolate {
     cores.push(Arc::new(Mutex::new(core)));
     info!("added core {}", cores.len() - 1);
   }
+
+  pub fn wake(&self) {
+    info!("waking isolate");
+  }
 }

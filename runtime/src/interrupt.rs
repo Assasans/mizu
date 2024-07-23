@@ -1,6 +1,6 @@
 pub const MASK_INTERRUPT_BIT: u64 = 1 << 63;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Interrupt {
   SupervisorSoftwareInterrupt,
   MachineSoftwareInterrupt,
