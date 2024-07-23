@@ -9,6 +9,7 @@ pub mod action {
 
   pub const CREATE_MESSAGE: u64 = 1;
   pub const CREATE_REACTION: u64 = 2;
+  pub const GET_USER: u64 = 3;
 }
 
 #[repr(C)]
@@ -46,4 +47,18 @@ pub struct discord_event_add_reaction_t {
   pub message_id: u64,
   pub user_id: u64,
   pub emoji: StringPtr,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct discord_get_user_t {
+  pub user_id: u64,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct discord_user_t {
+  pub id: u64,
+  pub name: StringPtr,
+  pub global_name: StringPtr,
 }

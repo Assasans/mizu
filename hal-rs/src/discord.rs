@@ -24,3 +24,13 @@ pub fn create_message(message: &discord_create_message_t) -> discord_message_t {
     ptr::read(result as *const _)
   }
 }
+
+pub fn get_user(user_id: u64) -> discord_user_t {
+  let request = discord_get_user_t {
+    user_id
+  };
+  unsafe {
+    let result = discord_syscall(action::GET_USER, &request as *const discord_get_user_t as *const core::ffi::c_void);
+    ptr::read(result as *const _)
+  }
+}

@@ -26,13 +26,11 @@ pub unsafe extern "C" fn int_discord() {
   match id {
     discord::action::EVENT_MESSAGE_CREATE => {
       let ptr = ptr as *const discord::discord_message_t;
-      println!("EVENT_MESSAGE_CREATE event={:?}", *ptr);
+      let msg = &*ptr;
+      let user = discord::get_user(msg.author_id);
+      println!("{} ({}): {}", user.name.get(), user.global_name.get(), msg.content.get());
     }
-    discord::action::EVENT_REACTION_ADD => {
-      let ptr = ptr as *const discord::discord_event_add_reaction_t;
-      println!("EVENT_REACTION_ADD event={:?}", *ptr);
-    }
-    _ => todo!("id={}", id)
+    _ => {}
   }
   asm!("mret");
 }

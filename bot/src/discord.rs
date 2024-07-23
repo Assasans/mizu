@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 use std::sync::Arc;
 use async_trait::async_trait;
-use hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_message_t};
+use hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_get_user_t, discord_message_t, discord_user_t};
 use tracing::debug;
 use twilight_http::Client;
 use twilight_http::request::channel::reaction::RequestReactionType;
@@ -98,6 +98,25 @@ impl InterruptHandler for DiscordInterruptHandler {
           &RequestReactionType::Unicode { name: &request.emoji.read(&cpu.bus) },
         ).await.unwrap();
         cpu.regs[10] = 0;
+      }
+      action::GET_USER => {
+        let request = cpu.bus.read_struct::<discord_get_user_t>(address).unwrap();
+        debug!("request: {:?}", request);
+
+        let response = self.http.user(Id::new(request.user_id))
+          .await.unwrap()
+          .model().await.unwrap();
+
+        let ffi_user = discord_user_t {
+          id: response.id.get(),
+          name: StringPtr((DRAM_BASE + 0x8800) as *const c_char),
+          global_name: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
+        };
+
+        ffi_user.name.write(&cpu.bus, &response.name);
+        ffi_user.global_name.write(&cpu.bus, response.global_name.as_ref().unwrap());
+        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_user).unwrap();
+        cpu.regs[10] = DRAM_BASE + 0x6000;
       }
       10 => {
         let message = self.standby.wait_for(self.guild_id, |event: &Event| {
