@@ -334,7 +334,17 @@ impl Cpu {
       0x07 => {
         match funct3 {
           0x3 => {
-            todo!();
+            // fld
+            let imm = ((inst as i32 as i64) >> 20) as u64;
+            let base_addr = self.regs[rs1];
+            let addr = base_addr + imm;
+
+            let value = f64::from_bits(self.load(addr, 64).unwrap());
+            info!("fld {rd},{rs1},{imm}: 0x{base_addr:#08x} + {imm} (0x{addr:#08x}) get {value}");
+
+            self.fp_regs[rd] = value;
+            self.perf.end_cpu_time();
+            return self.update_pc();
           }
           _ => {
             self.perf.end_cpu_time();
@@ -692,6 +702,12 @@ impl Cpu {
             self.perf.end_cpu_time();
             return self.update_pc();
           }
+          (0x4, 0x1) => {
+            // divw
+            self.regs[rd] = (self.regs[rs1] as i32).wrapping_div(self.regs[rs2] as i32) as i64 as u64;
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
           (0x5, 0x00) => {
             // srlw
             self.regs[rd] = (self.regs[rs1] as u32).wrapping_shr(shamt) as i32 as u64;
@@ -716,6 +732,57 @@ impl Cpu {
           },
         }
       }
+      0x53 => {
+        // Only signaling NaN inputs cause an Invalid Operation exception.
+        // The result is 0 if either operand is NaN.
+        match (funct3, funct7) {
+          (_, 0x9) => {
+            // fmul.d
+            self.fp_regs[rd] = self.fp_regs[rs1] * self.fp_regs[rs2];
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x0, 0x51) => {
+            // fle.d
+            // Performs a quiet less or equal comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
+            self.regs[rd] = if self.regs[rs1] <= self.regs[rs2] { 1 } else { 0 };
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x1, 0x51) => {
+            // flt.d
+            // Performs a quiet less comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
+            self.regs[rd] = if self.regs[rs1] < self.regs[rs2] { 1 } else { 0 };
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x2, 0x51) => {
+            // feq.d
+            // Performs a quiet equal comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
+            // Only signaling NaN inputs cause an Invalid Operation exception.
+            // The result is 0 if either operand is NaN.
+            self.regs[rd] = if self.regs[rs1] == self.regs[rs2] { 1 } else { 0 };
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x0, 0x71) => {
+            // fmv.x.d
+            self.regs[rd] = self.fp_regs[rs1].to_bits();
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          (0x0, 0x79) => {
+            // fmv.d.x
+            self.fp_regs[rd] = f64::from_bits(self.regs[rs1]);
+            self.perf.end_cpu_time();
+            return self.update_pc();
+          }
+          _ => {
+            self.perf.end_cpu_time();
+            Err(Exception::IllegalInstruction(inst))
+          }
+        }
+      },
       0x63 => {
         // imm[12|10:5|4:1|11] = inst[31|30:25|11:8|7]
         let imm = (((inst & 0x80000000) as i32 as i64 >> 19) as u64)
