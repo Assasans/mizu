@@ -164,12 +164,11 @@ use prelude::*;
       *context.http.lock().await = Some(http.clone());
       *context.channel_id.lock().await = Some(msg.channel_id);
 
-      let http = context.http.lock().await.clone().unwrap();
-
       let code = compile(&code, &msg, &http).await?;
       let bus = Arc::new(Bus::new(code));
       let isolate = context.isolate.lock().await.insert(Isolate::new(bus)).clone();
 
+      // Initialize environment
       {
         let cpu = isolate.get_bootstrap_core();
         let mut cpu = cpu.lock().await;
@@ -190,40 +189,7 @@ use prelude::*;
         cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler {})));
       }
 
-      let wfi = {
-        let cpu = isolate.get_bootstrap_core();
-        let mut cpu = cpu.lock().await;
-        cpu.wfi.clone()
-      };
-      'wfi: loop {
-        wfi.wait_for(|wfi| *wfi == false).await;
-        http.create_message(msg.channel_id).content(&format!("wfi: reset"))?.await?;
-
-        let cpu = isolate.get_bootstrap_core();
-        let mut cpu = cpu.lock().await;
-        loop {
-          match cpu.run_tick().await? {
-            TickResult::Continue => continue,
-            TickResult::Exception(exception) => {
-              http.create_message(msg.channel_id).content(&format!("cpu: exception: {}", exception))?.await?;
-            }
-            TickResult::Eof => {
-              http.create_message(msg.channel_id).content(&format!("cpu: execution finished ```c\n{}```", cpu.dump()))?.await?;
-            }
-            TickResult::Halt => {
-              http.create_message(msg.channel_id).content(&format!("cpu: execution halted ```c\n{}```", cpu.dump()))?.await?;
-            }
-            TickResult::TimeLimit => {
-              http.create_message(msg.channel_id).content(&format!("cpu: running too long without yield: `{:?} > {:?}`", cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
-            }
-            TickResult::WaitForInterrupt => {
-              http.create_message(msg.channel_id).content(&format!("wfi: waiting for interrupt at `{:#08x}`", cpu.pc))?.await?;
-              continue 'wfi;
-            }
-          }
-          break 'wfi;
-        }
-      }
+      context.run_core(isolate.get_bootstrap_core()).await?;
     }
     Event::MessageCreate(msg) => {
       debug!("create message: {:?}", msg.id);
