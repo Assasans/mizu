@@ -14,7 +14,7 @@ pub unsafe extern "C" fn _start() {
   let addr = _ap_startup as *const ();
   println!("ap startup addr: {:?}", addr);
   asm!("", in("a0") addr);
-  syscall(17);
+  syscall(SYSCALL_SIPI);
   halt();
 }
 

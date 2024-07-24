@@ -1,8 +1,8 @@
 use std::ops::Range;
+use mizu_hwconst::memory::{DRAM_BASE, DRAM_SIZE};
 
 use tracing::{error, warn};
 use crate::exception::Exception;
-use crate::param::{DRAM_BASE, DRAM_SIZE};
 
 pub struct Dram {
   pub dram: Vec<u8>,

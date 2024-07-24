@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
+use mizu_hal_types::syscall;
 use runtime::cpu::{Cpu, InterruptHandler};
 use tracing::debug;
 use crate::discord::DiscordInterruptHandler;
@@ -28,12 +29,12 @@ impl InterruptHandler for SipiHandler {
     {
       let mut cpu = cpu.lock().await;
       cpu.pc = pc;
-      cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler { context: self.context.clone() })));
-      cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler { context: self.context.clone() })));
-      cpu.ivt.insert(14, Arc::new(Box::new(LogHandler { context: self.context.clone() })));
-      cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
-      cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
-      cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler { context: self.context.clone() })));
+      cpu.ivt.insert(syscall::SYSCALL_PERF_DUMP, Arc::new(Box::new(DumpPerformanceHandler { context: self.context.clone() })));
+      cpu.ivt.insert(syscall::SYSCALL_HTTP, Arc::new(Box::new(HttpHandler { context: self.context.clone() })));
+      cpu.ivt.insert(syscall::SYSCALL_LOG, Arc::new(Box::new(LogHandler { context: self.context.clone() })));
+      cpu.ivt.insert(syscall::SYSCALL_HALT, Arc::new(Box::new(HaltHandler {})));
+      cpu.ivt.insert(syscall::SYSCALL_TIME, Arc::new(Box::new(TimeHandler {})));
+      cpu.ivt.insert(syscall::SYSCALL_SIPI, Arc::new(Box::new(SipiHandler { context: self.context.clone() })));
     }
 
     let context = self.context.clone();

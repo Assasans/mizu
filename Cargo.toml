@@ -3,7 +3,6 @@ resolver = "2"
 members = [
   "runtime",
   "bot",
-  "hal-rs",
-  "hal-types",
   "temp"
 ]
+exclude = ["hal-rs"]

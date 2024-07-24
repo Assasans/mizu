@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
 use async_trait::async_trait;
+use mizu_hwconst::memory::DRAM_BASE;
 use tracing::{debug, info, trace};
 use crate::apic::Apic;
 use crate::bus::Bus;
@@ -14,7 +15,6 @@ use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_
 use crate::exception::Exception;
 use crate::interrupt::Interrupt;
 use crate::isolate::Isolate;
-use crate::param::{DRAM_BASE, DRAM_SIZE};
 use crate::perf_counter::PerformanceCounter;
 use crate::state_flow::StateFlow;
 

@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 use std::sync::Arc;
 use async_trait::async_trait;
-use hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_get_user_t, discord_message_t, discord_user_t};
+use mizu_hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_get_user_t, discord_message_t, discord_user_t};
 use tracing::debug;
 use twilight_http::Client;
 use twilight_http::request::channel::reaction::RequestReactionType;
@@ -10,10 +10,10 @@ use twilight_model::gateway::event::Event;
 use twilight_model::id::Id;
 use twilight_model::id::marker::{ChannelMarker, GuildMarker, StickerMarker};
 use twilight_standby::Standby;
-use hal_types::StringPtr;
+use mizu_hal_types::StringPtr;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::{Cpu, InterruptHandler};
-use runtime::param::DRAM_BASE;
+use runtime::memory::HARDWARE_BASE;
 use crate::execution_context::ExecutionContext;
 
 pub struct DiscordInterruptHandler {
@@ -82,12 +82,12 @@ impl InterruptHandler for DiscordInterruptHandler {
           id: response.id.get(),
           channel_id: response.channel_id.get(),
           author_id: response.author.id.get(),
-          content: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
+          content: StringPtr((HARDWARE_BASE + 0x9900) as *const c_char),
         };
 
         ffi_message.content.write(&cpu.bus, &response.content);
-        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
-        cpu.regs[10] = DRAM_BASE + 0x6000;
+        cpu.bus.write_struct(HARDWARE_BASE + 0x6000, &ffi_message).unwrap();
+        cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }
       action::CREATE_REACTION => {
         let request = cpu.bus.read_struct::<discord_create_reaction_t>(address).unwrap();
@@ -110,14 +110,14 @@ impl InterruptHandler for DiscordInterruptHandler {
 
         let ffi_user = discord_user_t {
           id: response.id.get(),
-          name: StringPtr((DRAM_BASE + 0x8800) as *const c_char),
-          global_name: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
+          name: StringPtr((HARDWARE_BASE + 0x8800) as *const c_char),
+          global_name: StringPtr((HARDWARE_BASE + 0x9900) as *const c_char),
         };
 
         ffi_user.name.write(&cpu.bus, &response.name);
         ffi_user.global_name.write(&cpu.bus, response.global_name.as_ref().unwrap());
-        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_user).unwrap();
-        cpu.regs[10] = DRAM_BASE + 0x6000;
+        cpu.bus.write_struct(HARDWARE_BASE + 0x6000, &ffi_user).unwrap();
+        cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }
       10 => {
         let message = self.standby.wait_for(self.guild_id, |event: &Event| {
@@ -138,12 +138,12 @@ impl InterruptHandler for DiscordInterruptHandler {
           id: message.id.get(),
           channel_id: message.channel_id.get(),
           author_id: message.author.id.get(),
-          content: StringPtr((DRAM_BASE + 0x9900) as *const c_char),
+          content: StringPtr((HARDWARE_BASE + 0x9900) as *const c_char),
         };
 
         ffi_message.content.write(&mut cpu.bus, &message.content);
-        cpu.bus.write_struct(DRAM_BASE + 0x6000, &ffi_message).unwrap();
-        cpu.regs[10] = DRAM_BASE + 0x6000;
+        cpu.bus.write_struct(HARDWARE_BASE + 0x6000, &ffi_message).unwrap();
+        cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }
       _ => unimplemented!()
     }

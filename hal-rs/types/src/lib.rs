@@ -3,6 +3,7 @@
 use core::ffi::c_char;
 
 pub mod discord;
+pub mod syscall;
 
 #[repr(transparent)]
 #[derive(Debug)]

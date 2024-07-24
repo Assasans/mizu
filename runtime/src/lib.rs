@@ -1,7 +1,6 @@
 pub mod cpu;
 pub mod bus;
 pub mod dram;
-pub mod param;
 pub mod exception;
 pub mod csr;
 pub mod interrupt;
@@ -9,6 +8,7 @@ pub mod perf_counter;
 pub mod isolate;
 pub mod apic;
 pub mod state_flow;
+pub mod memory;
 
 #[cfg(test)]
 mod tests {

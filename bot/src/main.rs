@@ -43,8 +43,8 @@ use twilight_model::channel::Message;
 use twilight_model::channel::message::ReactionType;
 use twilight_model::id::Id;
 use twilight_model::id::marker::GuildMarker;
-use hal_types::discord::{action, discord_create_reaction_t, discord_event_add_reaction_t, discord_message_t};
-use hal_types::StringPtr;
+use mizu_hal_types::discord::{action, discord_create_reaction_t, discord_event_add_reaction_t, discord_message_t};
+use mizu_hal_types::{StringPtr, syscall};
 use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::Cpu;
@@ -53,7 +53,7 @@ use runtime::csr::MCAUSE;
 use runtime::exception::Exception;
 use runtime::interrupt::Interrupt;
 use runtime::isolate::Isolate;
-use runtime::param::HARDWARE_BASE;
+use runtime::memory::HARDWARE_BASE;
 use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::{DiscordInterruptHandler, MemoryObject};
 use crate::dump_performance::DumpPerformanceHandler;
@@ -172,21 +172,21 @@ use prelude::*;
       {
         let cpu = isolate.get_bootstrap_core();
         let mut cpu = cpu.lock().await;
-        cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+        cpu.ivt.insert(syscall::SYSCALL_DISCORD, Arc::new(Box::new(DiscordInterruptHandler {
           context: context.clone(),
           guild_id: msg.guild_id.unwrap(),
           standby: standby.clone(),
         })));
-        cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler { context: context.clone() })));
-        cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler { context: context.clone() })));
-        cpu.ivt.insert(13, Arc::new(Box::new(ObjectStorageHandler {
+        cpu.ivt.insert(syscall::SYSCALL_PERF_DUMP, Arc::new(Box::new(DumpPerformanceHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_HTTP, Arc::new(Box::new(HttpHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_OBJECT_STORAGE, Arc::new(Box::new(ObjectStorageHandler {
           context: context.clone(),
           object_storage: object_storage.clone(),
         })));
-        cpu.ivt.insert(14, Arc::new(Box::new(LogHandler { context: context.clone() })));
-        cpu.ivt.insert(15, Arc::new(Box::new(HaltHandler {})));
-        cpu.ivt.insert(16, Arc::new(Box::new(TimeHandler {})));
-        cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_LOG, Arc::new(Box::new(LogHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_HALT, Arc::new(Box::new(HaltHandler {})));
+        cpu.ivt.insert(syscall::SYSCALL_TIME, Arc::new(Box::new(TimeHandler {})));
+        cpu.ivt.insert(syscall::SYSCALL_SIPI, Arc::new(Box::new(SipiHandler { context: context.clone() })));
       }
 
       context.run_core(isolate.get_bootstrap_core()).await?;
@@ -202,7 +202,7 @@ use prelude::*;
       }
 
       dispatch_interrupt(&contexts, msg.guild_id.unwrap(), |context, cpu| {
-        cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+        cpu.ivt.insert(syscall::SYSCALL_DISCORD, Arc::new(Box::new(DiscordInterruptHandler {
           context: context.clone(),
           guild_id: msg.guild_id.unwrap(),
           standby: standby.clone(),
@@ -227,7 +227,7 @@ use prelude::*;
       }
 
       dispatch_interrupt(&contexts, reaction.guild_id.unwrap(), |context, cpu| {
-        cpu.ivt.insert(10, Arc::new(Box::new(DiscordInterruptHandler {
+        cpu.ivt.insert(syscall::SYSCALL_DISCORD, Arc::new(Box::new(DiscordInterruptHandler {
           context: context.clone(),
           guild_id: reaction.guild_id.unwrap(),
           standby: standby.clone(),

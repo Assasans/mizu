@@ -2,7 +2,7 @@ use core::{arch::asm, ffi::c_void, ptr};
 
 use crate::{syscall, SYSCALL_DISCORD};
 
-pub use hal_types::discord::*;
+pub use mizu_hal_types::discord::*;
 
 pub unsafe fn discord_syscall(action: u64, data: *const c_void) -> *const c_void {
   asm!(

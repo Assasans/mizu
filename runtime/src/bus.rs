@@ -4,12 +4,12 @@ use std::mem::size_of;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
 
-use rand::{thread_rng, Rng, RngCore};
+use mizu_hwconst::memory::*;
+use rand::{Rng, RngCore, thread_rng};
 use tracing::{debug, error, trace, warn};
 
 use crate::dram::Dram;
 use crate::exception::Exception;
-use crate::param::{CPUID_BASE, CPUID_END, DRAM_BASE, DRAM_END, HARDWARE_BASE, HARDWARE_END, HARDWARE_SIZE, RANDOM_BASE, RANDOM_END};
 
 pub struct Bus {
   pub dram: Mutex<Dram>,

@@ -9,21 +9,12 @@ pub mod discord;
 pub mod ivt;
 pub mod power;
 
-pub use hal_types as types;
+pub use mizu_hal_types as types;
 pub use mini_backtrace as mini_backtrace;
 
-use core::{arch::asm, ffi::{c_char, c_void}, ptr};
-use hal_types::StringPtr;
-
-pub const CPUID_BASE: *const c_void = 0x10000 as *const c_void;
-pub const CPUID_NAME: *const c_char = CPUID_BASE.cast();
-
-pub const SYSCALL_DISCORD: u64 = 10;
-pub const SYSCALL_PERF_DUMP: u64 = 11;
-pub const SYSCALL_HTTP: u64 = 12;
-pub const SYSCALL_OBJECT_STORAGE: u64 = 13;
-pub const SYSCALL_LOG: u64 = 14;
-pub const SYSCALL_HALT: u64 = 15;
+use core::{arch::asm, ffi::c_char, ptr};
+use mizu_hal_types::StringPtr;
+use mizu_hal_types::syscall::*;
 
 #[inline(always)]
 pub unsafe fn syscall(number: u64) {
