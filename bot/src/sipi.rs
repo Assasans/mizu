@@ -18,13 +18,16 @@ pub struct SipiHandler {
 #[async_trait]
 impl InterruptHandler for SipiHandler {
   async fn handle(&self, cpu: &mut Cpu) {
-    debug!("creating new core...");
+    let pc = cpu.regs[10];
+    debug!("creating new core, pc={:#18x}...", pc);
+
     let isolate = cpu.isolate.as_ref().unwrap().upgrade().unwrap();
     let id = isolate.cores.lock().unwrap().len() as u16;
     let cpu = isolate.add_core(Cpu::new(id, isolate.bus.clone(), Some(Arc::downgrade(&isolate))));
 
     {
       let mut cpu = cpu.lock().await;
+      cpu.pc = pc;
       cpu.ivt.insert(11, Arc::new(Box::new(DumpPerformanceHandler { context: self.context.clone() })));
       cpu.ivt.insert(12, Arc::new(Box::new(HttpHandler { context: self.context.clone() })));
       cpu.ivt.insert(14, Arc::new(Box::new(LogHandler { context: self.context.clone() })));
@@ -33,6 +36,9 @@ impl InterruptHandler for SipiHandler {
       cpu.ivt.insert(17, Arc::new(Box::new(SipiHandler { context: self.context.clone() })));
     }
 
-    self.context.run_core(cpu).await.unwrap();
+    let context = self.context.clone();
+    tokio::spawn(async move {
+      context.run_core(cpu).await.unwrap();
+    });
   }
 }
