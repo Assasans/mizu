@@ -66,7 +66,7 @@ pub mod machine {
   pub const CONFIGPTR: usize = 0xF15;
 
   /// Hart power state. Non-standard.
-  pub const POWERSTATE: usize = 0x320;
+  pub const POWERSTATE: usize = 0x7c0;
 }
 
 // mstatus and sstatus field mask

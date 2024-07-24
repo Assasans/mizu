@@ -7,6 +7,7 @@ pub mod alloc;
 pub mod rand;
 pub mod discord;
 pub mod ivt;
+pub mod power;
 
 pub use hal_types as types;
 pub use mini_backtrace as mini_backtrace;

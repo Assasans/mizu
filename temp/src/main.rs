@@ -11,7 +11,6 @@ use prelude::*;
 #[link_section = ".start"]
 #[no_mangle]
 pub unsafe extern "C" fn _start() {
-  asm!("csrrw zero, 0x320, t0", in("t0") 2);
   let addr = _ap_startup as *const ();
   println!("ap startup addr: {:?}", addr);
   asm!("", in("a0") addr);
@@ -20,7 +19,7 @@ pub unsafe extern "C" fn _start() {
 }
 
 pub unsafe extern "C" fn _ap_startup() {
-  asm!("csrrw zero, 0x320, t0", in("t0") 2);
+  __set_power_state(POWERSTATE_BYPASS);
   println!("Hello, 水の世界！");
   let fiba = fibonacci(25);
   println!("{fiba}");

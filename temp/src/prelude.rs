@@ -6,5 +6,6 @@ pub use mizu_hal::ivt::*;
 pub use mizu_hal::print::*;
 pub use mizu_hal::alloc::*;
 pub use mizu_hal::rand::*;
+pub use mizu_hal::power::*;
 pub use mizu_hal::types::StringPtr;
 pub use mizu_hal::mini_backtrace as mini_backtrace;
