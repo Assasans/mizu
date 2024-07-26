@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 mizu-hal-types = { version = "0.1.0", path = "../types" }
+mizu-hal-discord = { version = "0.1.0", path = "../discord" }
 mini-backtrace = { version = "0.1.4", path = "../../../mini-backtrace" }
 rand_core = "0.6.4"
 

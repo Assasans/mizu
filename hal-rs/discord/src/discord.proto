@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package discord;
+
+message DiscordExRequest {
+  oneof DiscordExRequestUnion {
+    CreateMessageRequest create_message_request = 1;
+    EditMessageRequest edit_message_request = 2;
+  }
+}
+
+message DiscordExEvent {
+  oneof DiscordExEventUnion {
+    IncomingMessage message_create = 1;
+    ReactionCreate reaction_create = 2;
+  }
+}
+
+message ReactionCreate {
+  uint64 user_id = 1; // The ID of the user who added the reaction
+  uint64 channel_id = 2; // The ID of the channel containing the message
+  uint64 message_id = 3; // The ID of the message to which the reaction was added
+  optional uint64 guild_id = 4; // The ID of the guild (server) containing the message, if applicable
+  Emoji emoji = 5; // The emoji used for the reaction
+}
+
+message Emoji {
+  optional uint64 id = 1; // The ID of the emoji (null for standard emojis)
+  string name = 2; // The name of the emoji (or unicode representation for standard emojis)
+  bool animated = 3; // Whether the emoji is animated
+}
+
+message CreateMessageRequest {
+  uint64 channel_id = 1; // The ID of the channel to send a message in
+  optional string content = 2; // The message content
+  bool tts = 3; // Indicates if the message should be read using text-to-speech
+  Embed embed = 4; // Optional embed object for rich content
+  repeated string allowed_mentions = 5; // Controls which users get mentioned
+  optional uint64 reference_id = 6; // Message ID to reply to, if any
+}
+
+message EditMessageRequest {
+  uint64 channel_id = 1; // The ID of the channel containing the message
+  uint64 message_id = 2; // The ID of the message to edit
+  optional string content = 3; // The new content of the message
+  Embed embed = 4; // The new embed for the message, if any
+  repeated string allowed_mentions = 5; // Controls which users get mentioned
+}
+
+message Embed {
+  string title = 1;
+  string description = 2;
+  string url = 3;
+  string color = 4;
+  repeated EmbedField fields = 5;
+  string image_url = 6;
+  string thumbnail_url = 7;
+  string footer_text = 8;
+  string footer_icon_url = 9;
+}
+
+message EmbedField {
+  string name = 1;
+  string value = 2;
+  bool inline = 3;
+}
+
+message IncomingMessage {
+  uint64 id = 1; // Message ID
+  uint64 channel_id = 2; // Channel ID where the message was sent
+  optional uint64 guild_id = 3; // Guild ID where the message was sent
+  User author = 4; // Author of the message
+  string content = 5; // Message content
+  repeated Attachment attachments = 6; // Files attached to the message
+  repeated Embed embeds = 7; // Embeds included in the message
+  string timestamp = 8; // ISO8601 timestamp of when the message was sent
+  string edited_timestamp = 9; // ISO8601 timestamp of the last edit, if any
+  bool tts = 10; // Whether this was a TTS message
+  optional uint64 webhook_id = 11; // ID of the webhook that sent this message, if any
+  repeated User mentions = 12; // Users mentioned in the message
+  bool mention_everyone = 13; // Whether the message mentions everyone
+  repeated Role mentioned_roles = 14; // Roles mentioned in the message
+  int32 type = 15; // Type of the message
+}
+
+message User {
+  uint64 id = 1; // User ID
+  string username = 2; // Username
+  string discriminator = 3; // User's 4-digit Discord tag
+  string avatar = 4; // Avatar hash
+  bool bot = 5; // Whether the user is a bot
+  bool system = 6; // Whether the user is an official system user
+  bool mfa_enabled = 7; // Whether the user has two-factor authentication enabled
+  string locale = 8; // User's chosen language
+  bool verified = 9; // Whether the user's email has been verified
+  string email = 10; // User's email address, if available
+  int32 flags = 11; // User's public flags
+  int32 premium_type = 12; // Type of Nitro subscription
+}
+
+message Attachment {
+  uint64 id = 1; // Attachment ID
+  string filename = 2; // Name of the attached file
+  string content_type = 3; // MIME type of the file
+  int32 size = 4; // Size of the file in bytes
+  string url = 5; // URL to download the file
+  string proxy_url = 6; // Proxy URL for the file
+  int32 height = 7; // Height of the file, if applicable
+  int32 width = 8; // Width of the file, if applicable
+}
+
+message Role {
+  uint64 id = 1; // Role ID
+  string name = 2; // Role name
+  int32 color = 3; // Integer representation of the role's color
+  bool hoist = 4; // Whether this role is displayed separately
+  int32 position = 5; // Position of the role in the role list
+  int32 permissions = 6; // Permissions bit set
+  bool managed = 7; // Whether the role is managed by an integration
+  bool mentionable = 8; // Whether the role can be mentioned
+}

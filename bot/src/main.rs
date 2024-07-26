@@ -1,6 +1,7 @@
 pub mod http;
 pub mod dump_performance;
 pub mod discord;
+pub mod discord_ex;
 pub mod object_storage;
 pub mod log;
 pub mod halt;
@@ -43,6 +44,9 @@ use twilight_model::channel::Message;
 use twilight_model::channel::message::ReactionType;
 use twilight_model::id::Id;
 use twilight_model::id::marker::GuildMarker;
+use mizu_hal_discord::discord::{DiscordExEvent, Emoji, IncomingMessage, ReactionCreate};
+use mizu_hal_discord::discord::discord_ex_event::DiscordExEventUnion;
+use mizu_hal_discord::prost::Message as ProstMessage;
 use mizu_hal_types::discord::{action, discord_create_reaction_t, discord_event_add_reaction_t, discord_message_t};
 use mizu_hal_types::{StringPtr, syscall};
 use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
@@ -56,6 +60,7 @@ use runtime::isolate::Isolate;
 use runtime::memory::HARDWARE_BASE;
 use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::discord::{DiscordInterruptHandler, MemoryObject};
+use crate::discord_ex::DiscordExInterruptHandler;
 use crate::dump_performance::DumpPerformanceHandler;
 use crate::execution_context::ExecutionContext;
 use crate::halt::HaltHandler;
@@ -177,6 +182,11 @@ use prelude::*;
           guild_id: msg.guild_id.unwrap(),
           standby: standby.clone(),
         })));
+        cpu.ivt.insert(syscall::SYSCALL_DISCORD_EX, Arc::new(Box::new(DiscordExInterruptHandler {
+          context: context.clone(),
+          guild_id: msg.guild_id.unwrap(),
+          standby: standby.clone(),
+        })));
         cpu.ivt.insert(syscall::SYSCALL_PERF_DUMP, Arc::new(Box::new(DumpPerformanceHandler { context: context.clone() })));
         cpu.ivt.insert(syscall::SYSCALL_HTTP, Arc::new(Box::new(HttpHandler { context: context.clone() })));
         cpu.ivt.insert(syscall::SYSCALL_OBJECT_STORAGE, Arc::new(Box::new(ObjectStorageHandler {
@@ -207,16 +217,31 @@ use prelude::*;
           guild_id: msg.guild_id.unwrap(),
           standby: standby.clone(),
         })));
+        cpu.ivt.insert(syscall::SYSCALL_DISCORD_EX, Arc::new(Box::new(DiscordExInterruptHandler {
+          context: context.clone(),
+          guild_id: msg.guild_id.unwrap(),
+          standby: standby.clone(),
+        })));
 
-        let event = discord_message_t {
+        let data = IncomingMessage {
           id: msg.id.get(),
-          channel_id: msg.channel_id.get(),
-          author_id: msg.author.id.get(),
-          content: StringPtr((HARDWARE_BASE + 0x19000) as *const c_char),
+          channel_id: 0,
+          guild_id: None,
+          author: None,
+          content: msg.content.to_owned(),
+          attachments: vec![],
+          embeds: vec![],
+          timestamp: "".to_string(),
+          edited_timestamp: "".to_string(),
+          tts: false,
+          webhook_id: None,
+          mentions: vec![],
+          mention_everyone: false,
+          mentioned_roles: vec![],
+          r#type: 0,
         };
-        cpu.bus.write_string(event.content.0 as u64, &msg.content).unwrap();
-
-        (action::EVENT_MESSAGE_CREATE, event)
+        let event = DiscordExEvent { discord_ex_event_union: Some(DiscordExEventUnion::MessageCreate(data)) };
+        event.encode_to_vec()
       }).await;
     }
     Event::ReactionAdd(reaction) => {
@@ -232,20 +257,36 @@ use prelude::*;
           guild_id: reaction.guild_id.unwrap(),
           standby: standby.clone(),
         })));
+        cpu.ivt.insert(syscall::SYSCALL_DISCORD_EX, Arc::new(Box::new(DiscordExInterruptHandler {
+          context: context.clone(),
+          guild_id: reaction.guild_id.unwrap(),
+          standby: standby.clone(),
+        })));
 
-        if let ReactionType::Unicode { name } = &reaction.emoji {
-          let event = discord_event_add_reaction_t {
-            channel_id: reaction.channel_id.get(),
-            message_id: reaction.message_id.get(),
-            user_id: reaction.user_id.get(),
-            emoji: StringPtr((HARDWARE_BASE + 0x19000) as *const c_char),
-          };
-          cpu.bus.write_string(event.emoji.0 as u64, name).unwrap();
-
-          (action::EVENT_REACTION_ADD, event)
-        } else {
-          todo!()
-        }
+        let data = ReactionCreate {
+          user_id: reaction.user_id.get(),
+          channel_id: reaction.channel_id.get(),
+          message_id: reaction.message_id.get(),
+          guild_id: reaction.guild_id.map(|id| id.get()),
+          emoji: match &reaction.emoji {
+            ReactionType::Custom { id, name, animated } => {
+              Some(Emoji {
+                id: Some(id.get()),
+                name: name.clone().unwrap(),
+                animated: *animated,
+              })
+            }
+            ReactionType::Unicode { name } => {
+              Some(Emoji {
+                id: None,
+                name: name.clone(),
+                animated: false,
+              })
+            }
+          },
+        };
+        let event = DiscordExEvent { discord_ex_event_union: Some(DiscordExEventUnion::ReactionCreate(data)) };
+        event.encode_to_vec()
       }).await;
     }
     Event::Ready(_) => {
@@ -300,7 +341,7 @@ async fn compile(code: &str, msg: &Message, http: &Client) -> Result<Vec<u8>, Bo
   Ok(fs::read(format!("{}.bin", binary_filename)).await?)
 }
 
-async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarker>, block: impl FnOnce(Arc<ExecutionContext>, &mut Cpu) -> (u64, T)) {
+async fn dispatch_interrupt(contexts: &Arc<Contexts>, guild_id: Id<GuildMarker>, block: impl FnOnce(Arc<ExecutionContext>, &mut Cpu) -> Vec<u8>) {
   info!("dispatch int");
   let context = {
     let mut contexts = contexts.contexts.write().await;
@@ -313,9 +354,9 @@ async fn dispatch_interrupt<T>(contexts: &Arc<Contexts>, guild_id: Id<GuildMarke
 
   cpu.halt = false;
 
-  let (id, event) = block(context.clone(), &mut cpu);
-  cpu.bus.write_struct(HARDWARE_BASE + 0x16000, &event).unwrap();
-  cpu.regs[10] = id;
+  let data = block(context.clone(), &mut cpu);
+  cpu.bus.write(HARDWARE_BASE + 0x16000, &data).unwrap();
+  cpu.regs[10] = data.len() as u64;
   cpu.regs[11] = HARDWARE_BASE + 0x16000;
 
   info!("dispatching interrupt");

@@ -7,6 +7,7 @@ edition = "2021"
 async-trait = "0.1.80"
 flume = "0.11.0"
 mizu-hal-types = { version = "0.1.0", path = "../hal-rs/types" }
+mizu-hal-discord = { version = "0.1.0", path = "../hal-rs/discord" }
 reqwest = "0.12.4"
 runtime = { path = "../runtime" }
 tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "io-util", "macros", "fs", "process"] }

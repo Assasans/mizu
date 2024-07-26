@@ -15,7 +15,7 @@ impl Dram {
     dram.splice(..code.len(), code.into_iter());
     Dram {
       dram,
-      code_range: DRAM_BASE..DRAM_BASE + 0x4000
+      code_range: DRAM_BASE..DRAM_BASE + 0x12000
     }
   }
 

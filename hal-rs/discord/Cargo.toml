@@ -1,0 +1,11 @@
+[package]
+name = "mizu-hal-discord"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = { version = "1.6.1", default-features = false }
+prost = { version = "0.13.1", features = ["derive"], default-features = false }
+
+[build-dependencies]
+prost-build = "0.13.1"

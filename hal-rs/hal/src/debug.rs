@@ -4,14 +4,14 @@ use crate::debug_log_bytes;
 
 pub struct Writer {
   position: usize,
-  buffer: [u8; 256],
+  buffer: [u8; 1024],
 }
 
 impl Writer {
   pub fn new() -> Self {
     Writer {
       position: 0,
-      buffer: [0; 256]
+      buffer: [0; 1024]
     }
   }
 
