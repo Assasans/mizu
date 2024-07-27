@@ -13,7 +13,7 @@ pub struct Dram {
 impl Dram {
   pub fn new(code: Vec<u8>) -> Self {
     let mut dram = vec![0; DRAM_SIZE as usize];
-    dram.splice(..code.len(), code.into_iter());
+    dram.splice(..code.len(), code);
     Dram {
       dram,
       code_range: DRAM_BASE..DRAM_BASE + 0x12000,
@@ -34,7 +34,7 @@ impl Dram {
       code |= (self.dram[index + i as usize] as u64) << (i * 8);
     }
 
-    return Ok(code);
+    Ok(code)
   }
 
   // addr/size must be valid. Check in bus
@@ -54,6 +54,6 @@ impl Dram {
       let offset = 8 * i as usize;
       self.dram[index + i as usize] = ((value >> offset) & 0xff) as u8;
     }
-    return Ok(());
+    Ok(())
   }
 }

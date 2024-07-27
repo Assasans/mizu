@@ -19,14 +19,14 @@ impl Csr {
   pub fn dump_csrs(&self) -> String {
     format!(
       "// control status registers\n{}\n{}\n",
-      format!(
+      format_args!(
         "mstatus = {:<#18x}  mtvec = {:<#18x}  mepc = {:<#18x}  mcause = {:<#18x}",
         self.load(MSTATUS),
         self.load(MTVEC),
         self.load(MEPC),
         self.load(MCAUSE),
       ),
-      format!(
+      format_args!(
         "sstatus = {:<#18x}  stvec = {:<#18x}  sepc = {:<#18x}  scause = {:<#18x}",
         self.load(SSTATUS),
         self.load(STVEC),

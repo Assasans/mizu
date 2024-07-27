@@ -111,6 +111,12 @@ pub struct Contexts {
   pub contexts: RwLock<HashMap<Id<GuildMarker>, Arc<ExecutionContext>>>,
 }
 
+impl Default for Contexts {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl Contexts {
   pub fn new() -> Self {
     Contexts {
@@ -465,9 +471,8 @@ impl CpuExt for Cpu {
     //   return Ok(TickResult::Continue); // Exited from trap
     // }
 
-    match self.check_pending_interrupt() {
-      Some(interrupt) => self.handle_interrupt(interrupt),
-      None => (),
+    if let Some(interrupt) = self.check_pending_interrupt() {
+      self.handle_interrupt(interrupt);
     }
 
     Ok(TickResult::Continue)
@@ -479,7 +484,7 @@ async fn generate_rv_obj() -> (String, String, bool) {
     .env("CC", "/usr/bin/clang")
     .env("CXX", "/usr/bin/clang++")
     .current_dir("temp")
-    .args(&["+nightly", "build"])
+    .args(["+nightly", "build"])
     .output()
     .await
     .expect("Failed to generate rv object");
@@ -495,7 +500,7 @@ async fn generate_rv_obj() -> (String, String, bool) {
 async fn generate_rv_binary(obj: &str) {
   let objcopy = "llvm-objcopy";
   let output = Command::new(objcopy)
-    .args(&["-O", "binary", obj, &format!("{}.bin", obj.to_owned())])
+    .args(["-O", "binary", obj, &format!("{}.bin", obj.to_owned())])
     .output()
     .await
     .expect("Failed to generate rv binary");
@@ -505,7 +510,7 @@ async fn generate_rv_binary(obj: &str) {
 async fn get_disassembled(obj: &str) -> String {
   let objcopy = "riscv64-unknown-elf-objdump";
   let output = Command::new(objcopy)
-    .args(&[
+    .args([
       "--disassemble=_start",
       "--no-show-raw-insn",
       // "--visualize-jumps",

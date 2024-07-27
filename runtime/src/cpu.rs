@@ -125,7 +125,7 @@ impl Cpu {
           .collect::<Vec<_>>()
           .join("  "),
       );
-      output.push_str("\n");
+      output.push('\n');
     }
 
     let csrs = [
@@ -146,7 +146,7 @@ impl Cpu {
           .collect::<Vec<_>>()
           .join("  "),
       );
-      output.push_str("\n");
+      output.push('\n');
     }
 
     output
@@ -159,11 +159,9 @@ impl Cpu {
       " s3 ", " s4 ", " s5 ", " s6 ", " s7 ", " s8 ", " s9 ", " s10", " s11", " t3 ", " t4 ", " t5 ", " t6 ",
     ];
     for i in (0..32).step_by(4) {
-      output = format!(
-        "{}\n{}",
-        output,
-        format!(
-          "x{:02}({})={:>#18x} x{:02}({})={:>#18x} x{:02}({})={:>#18x} x{:02}({})={:>#18x}",
+      output
+        .write_fmt(format_args!(
+          "\nx{:02}({})={:>#18x} x{:02}({})={:>#18x} x{:02}({})={:>#18x} x{:02}({})={:>#18x}",
           i,
           abi[i],
           self.regs[i],
@@ -176,8 +174,8 @@ impl Cpu {
           i + 3,
           abi[i + 3],
           self.regs[i + 3],
-        )
-      );
+        ))
+        .unwrap();
     }
     output
   }
@@ -324,7 +322,7 @@ impl Cpu {
 
   #[inline]
   pub fn update_pc(&mut self) -> Result<u64, Exception> {
-    return Ok(self.pc + 4);
+    Ok(self.pc + 4)
   }
 
   pub async fn execute(&mut self, inst: u64) -> Result<u64, Exception> {
@@ -360,49 +358,49 @@ impl Cpu {
             let val = self.load(addr, 8)?;
             self.regs[rd] = val as i8 as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x1 => {
             // lh
             let val = self.load(addr, 16)?;
             self.regs[rd] = val as i16 as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x2 => {
             // lw
             let val = self.load(addr, 32)?;
             self.regs[rd] = val as i32 as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x3 => {
             // ld
             let val = self.load(addr, 64)?;
             self.regs[rd] = val;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x4 => {
             // lbu
             let val = self.load(addr, 8)?;
             self.regs[rd] = val;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x5 => {
             // lhu
             let val = self.load(addr, 16)?;
             self.regs[rd] = val;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x6 => {
             // lwu
             let val = self.load(addr, 32)?;
             self.regs[rd] = val;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -423,7 +421,7 @@ impl Cpu {
 
             self.fp_regs[rd] = value;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -441,31 +439,31 @@ impl Cpu {
             // addi
             self.regs[rd] = self.regs[rs1].wrapping_add(imm);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x1 => {
             // slli
             self.regs[rd] = self.regs[rs1] << shamt;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x2 => {
             // slti
             self.regs[rd] = if (self.regs[rs1] as i64) < (imm as i64) { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x3 => {
             // sltiu
             self.regs[rd] = if self.regs[rs1] < imm { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x4 => {
             // xori
             self.regs[rd] = self.regs[rs1] ^ imm;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x5 => {
             match funct7 >> 1 {
@@ -473,13 +471,13 @@ impl Cpu {
               0x00 => {
                 self.regs[rd] = self.regs[rs1].wrapping_shr(shamt);
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               // srai
               0x10 => {
                 self.regs[rd] = (self.regs[rs1] as i64).wrapping_shr(shamt) as u64;
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               _ => {
                 self.perf.end_cpu_time();
@@ -490,12 +488,12 @@ impl Cpu {
           0x6 => {
             self.regs[rd] = self.regs[rs1] | imm;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           } // ori
           0x7 => {
             self.regs[rd] = self.regs[rs1] & imm; // andi
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -508,7 +506,7 @@ impl Cpu {
         let imm = (inst & 0xfffff000) as i32 as i64 as u64;
         self.regs[rd] = self.pc.wrapping_add(imm);
         self.perf.end_cpu_time();
-        return self.update_pc();
+        self.update_pc()
       }
       0x1b => {
         let imm = ((inst as i32 as i64) >> 20) as u64;
@@ -519,13 +517,13 @@ impl Cpu {
             // addiw
             self.regs[rd] = self.regs[rs1].wrapping_add(imm) as i32 as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x1 => {
             // slliw
             self.regs[rd] = self.regs[rs1].wrapping_shl(shamt) as i32 as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x5 => {
             match funct7 {
@@ -533,13 +531,13 @@ impl Cpu {
                 // srliw
                 self.regs[rd] = (self.regs[rs1] as u32).wrapping_shr(shamt) as i32 as i64 as u64;
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               0x20 => {
                 // sraiw
                 self.regs[rd] = (self.regs[rs1] as i32).wrapping_shr(shamt) as i64 as u64;
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               _ => {
                 self.perf.end_cpu_time();
@@ -593,7 +591,7 @@ impl Cpu {
             info!("fsd {rs2},{imm}({rs1}): 0x{base_addr:#08x} + {imm} (0x{addr:#08x}) set {value}");
             self.store(addr, 64, value.to_bits()).unwrap();
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -613,7 +611,7 @@ impl Cpu {
             self.store(self.regs[rs1], 32, t.wrapping_add(self.regs[rs2]))?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x00) => {
             // amoadd.d
@@ -621,7 +619,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, t.wrapping_add(self.regs[rs2]))?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x2, 0x01) => {
             // amoswap.w
@@ -629,7 +627,7 @@ impl Cpu {
             self.store(self.regs[rs1], 32, self.regs[rs2])?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x01) => {
             // amoswap.d
@@ -637,7 +635,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, self.regs[rs2])?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x04) => {
             // amoxor.d
@@ -645,7 +643,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, t ^ self.regs[rs2])?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x08) => {
             // amoor.d
@@ -653,7 +651,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, t | self.regs[rs2])?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x12) => {
             // amoand.d
@@ -661,7 +659,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, t & self.regs[rs2])?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x10) => {
             // amomin.d
@@ -669,7 +667,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, t.min(self.regs[rs2]))?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x14) => {
             // amomax.d
@@ -677,7 +675,7 @@ impl Cpu {
             self.store(self.regs[rs1], 64, t.max(self.regs[rs2]))?;
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -689,97 +687,97 @@ impl Cpu {
         // "SLL, SRL, and SRA perform logical left, logical right, and arithmetic right
         // shifts on the value in register rs1 by the shift amount held in register rs2.
         // In RV64I, only the low 6 bits of rs2 are considered for the shift amount."
-        let shamt = ((self.regs[rs2] & 0x3f) as u64) as u32;
+        let shamt = (self.regs[rs2] & 0x3f) as u32;
         match (funct3, funct7) {
           (0x0, 0x00) => {
             // add
             self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x01) => {
             // mul
             self.regs[rd] = self.regs[rs1].wrapping_mul(self.regs[rs2]);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x20) => {
             // sub
             self.regs[rd] = self.regs[rs1].wrapping_sub(self.regs[rs2]);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x1, 0x00) => {
             // sll
             self.regs[rd] = self.regs[rs1].wrapping_shl(shamt);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x1, 0x01) => {
             // mulh
             self.regs[rd] = ((self.regs[rs1] as i128).wrapping_mul(self.regs[rs2] as i128) >> 64) as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x2, 0x00) => {
             // slt
             self.regs[rd] = if (self.regs[rs1] as i64) < (self.regs[rs2] as i64) { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x00) => {
             // sltu
             self.regs[rd] = if self.regs[rs1] < self.regs[rs2] { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x3, 0x01) => {
             // mulhu
             self.regs[rd] = ((self.regs[rs1] as u128).wrapping_mul(self.regs[rs2] as u128) >> 64) as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x4, 0x00) => {
             // xor
             self.regs[rd] = self.regs[rs1] ^ self.regs[rs2];
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x5, 0x00) => {
             // srl
             self.regs[rd] = self.regs[rs1].wrapping_shr(shamt);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x5, 0x01) => {
             // divu
             self.regs[rd] = self.regs[rs1].wrapping_div(self.regs[rs2]);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x5, 0x20) => {
             // sra
             self.regs[rd] = (self.regs[rs1] as i64).wrapping_shr(shamt) as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x6, 0x00) => {
             // or
             self.regs[rd] = self.regs[rs1] | self.regs[rs2];
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x7, 0x00) => {
             // and
             self.regs[rd] = self.regs[rs1] & self.regs[rs2];
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x7, 0x01) => {
             // remu
             self.regs[rd] = self.regs[rs1].wrapping_rem(self.regs[rs2]);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -791,7 +789,7 @@ impl Cpu {
         // lui
         self.regs[rd] = (inst & 0xfffff000) as i32 as i64 as u64;
         self.perf.end_cpu_time();
-        return self.update_pc();
+        self.update_pc()
       }
       0x3b => {
         // "The shift amount is given by rs2[4:0]."
@@ -801,49 +799,49 @@ impl Cpu {
             // addw
             self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]) as i32 as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x1) => {
             // mulw
             self.regs[rd] = (self.regs[rs1] as i32).wrapping_mul(self.regs[rs2] as i32) as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x20) => {
             // subw
             self.regs[rd] = (self.regs[rs1].wrapping_sub(self.regs[rs2]) as i32) as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x1, 0x00) => {
             // sllw
             self.regs[rd] = (self.regs[rs1] as u32).wrapping_shl(shamt) as i32 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x4, 0x1) => {
             // divw
             self.regs[rd] = (self.regs[rs1] as i32).wrapping_div(self.regs[rs2] as i32) as i64 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x5, 0x00) => {
             // srlw
             self.regs[rd] = (self.regs[rs1] as u32).wrapping_shr(shamt) as i32 as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x5, 0x1) => {
             // divuw
             self.regs[rd] = (self.regs[rs1] as u32).wrapping_div(self.regs[rs2] as u32) as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x5, 0x20) => {
             // sraw
             self.regs[rd] = ((self.regs[rs1] as i32) >> (shamt as i32)) as u64;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -859,21 +857,21 @@ impl Cpu {
             // fmul.d
             self.fp_regs[rd] = self.fp_regs[rs1] * self.fp_regs[rs2];
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x51) => {
             // fle.d
             // Performs a quiet less or equal comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
             self.regs[rd] = if self.regs[rs1] <= self.regs[rs2] { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x1, 0x51) => {
             // flt.d
             // Performs a quiet less comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
             self.regs[rd] = if self.regs[rs1] < self.regs[rs2] { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x2, 0x51) => {
             // feq.d
@@ -882,19 +880,19 @@ impl Cpu {
             // The result is 0 if either operand is NaN.
             self.regs[rd] = if self.regs[rs1] == self.regs[rs2] { 1 } else { 0 };
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x71) => {
             // fmv.x.d
             self.regs[rd] = self.fp_regs[rs1].to_bits();
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           (0x0, 0x79) => {
             // fmv.d.x
             self.fp_regs[rd] = f64::from_bits(self.regs[rs1]);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -917,7 +915,7 @@ impl Cpu {
               return Ok(self.pc.wrapping_add(imm));
             }
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x1 => {
             // bne
@@ -926,7 +924,7 @@ impl Cpu {
               return Ok(self.pc.wrapping_add(imm));
             }
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x4 => {
             // blt
@@ -935,7 +933,7 @@ impl Cpu {
               return Ok(self.pc.wrapping_add(imm));
             }
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x5 => {
             // bge
@@ -944,7 +942,7 @@ impl Cpu {
               return Ok(self.pc.wrapping_add(imm));
             }
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x6 => {
             // bltu
@@ -953,7 +951,7 @@ impl Cpu {
               return Ok(self.pc.wrapping_add(imm));
             }
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x7 => {
             // bgeu
@@ -962,7 +960,7 @@ impl Cpu {
               return Ok(self.pc.wrapping_add(imm));
             }
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();
@@ -980,7 +978,7 @@ impl Cpu {
 
         self.regs[rd] = t;
         self.perf.end_cpu_time();
-        return Ok(new_pc);
+        Ok(new_pc)
       }
       0x6f => {
         // jal
@@ -993,7 +991,7 @@ impl Cpu {
           | ((inst >> 20) & 0x7fe); // imm[10:1]
 
         self.perf.end_cpu_time();
-        return Ok(self.pc.wrapping_add(imm));
+        Ok(self.pc.wrapping_add(imm))
       }
       0x73 => {
         let csr_addr = ((inst & 0xfff00000) >> 20) as usize;
@@ -1016,13 +1014,13 @@ impl Cpu {
                   return Err(Exception::RuntimeFault(num));
                 }
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               (0x1, 0x0) => {
                 // ebreak
                 // Makes a request of the debugger bu raising a Breakpoint exception.
                 self.perf.end_cpu_time();
-                return Err(Exception::Breakpoint(self.pc));
+                Err(Exception::Breakpoint(self.pc))
               }
               (0x2, 0x18) => {
                 // mret
@@ -1053,7 +1051,7 @@ impl Cpu {
                 self.csr.store(MSTATUS, status);
 
                 self.perf.end_cpu_time();
-                return Ok(self.pc);
+                Ok(self.pc)
                 // return self.update_pc();
               }
               (0x5, 0x8) => {
@@ -1061,13 +1059,13 @@ impl Cpu {
                 info!("waiting for interrupt");
                 self.wfi.set(true);
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               (_, 0x9) => {
                 // sfence.vma
                 // Do nothing.
                 self.perf.end_cpu_time();
-                return self.update_pc();
+                self.update_pc()
               }
               _ => {
                 self.perf.end_cpu_time();
@@ -1081,7 +1079,7 @@ impl Cpu {
             self.csr.store(csr_addr, self.regs[rs1]);
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x2 => {
             // csrrs
@@ -1089,7 +1087,7 @@ impl Cpu {
             self.csr.store(csr_addr, t | self.regs[rs1]);
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x3 => {
             // csrrc
@@ -1097,7 +1095,7 @@ impl Cpu {
             self.csr.store(csr_addr, t & (!self.regs[rs1]));
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x5 => {
             // csrrwi
@@ -1105,7 +1103,7 @@ impl Cpu {
             self.regs[rd] = self.csr.load(csr_addr);
             self.csr.store(csr_addr, zimm);
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x6 => {
             // csrrsi
@@ -1114,7 +1112,7 @@ impl Cpu {
             self.csr.store(csr_addr, t | zimm);
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           0x7 => {
             // csrrci
@@ -1123,7 +1121,7 @@ impl Cpu {
             self.csr.store(csr_addr, t & (!zimm));
             self.regs[rd] = t;
             self.perf.end_cpu_time();
-            return self.update_pc();
+            self.update_pc()
           }
           _ => {
             self.perf.end_cpu_time();

@@ -18,6 +18,12 @@ pub struct ExecutionContext {
   pub isolate: Mutex<Option<Arc<Isolate>>>,
 }
 
+impl Default for ExecutionContext {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl ExecutionContext {
   pub fn new() -> Self {
     Self {
@@ -43,7 +49,7 @@ impl ExecutionContext {
 
     info!("started core loop");
     'wfi: loop {
-      wfi.wait_for(|wfi| *wfi == false).await;
+      wfi.wait_for(|wfi| !(*wfi)).await;
       // http.create_message(channel_id).content(&format!("cpu {}/wfi: reset", cpu_id))?.await?;
 
       let mut cpu = cpu.lock().await;

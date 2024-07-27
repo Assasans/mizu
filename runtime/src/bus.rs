@@ -109,7 +109,7 @@ fn previous_power_of_two(value: u64) -> u64 {
   let value = value | (value >> 4);
   let value = value | (value >> 8);
   let value = value | (value >> 16);
-  return value - (value >> 1);
+  value - (value >> 1)
 }
 
 impl BusMemoryExt for Bus {

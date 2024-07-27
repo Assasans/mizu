@@ -11,6 +11,12 @@ pub struct PerformanceCounter {
   pub instructions_retired: u64,
 }
 
+impl Default for PerformanceCounter {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl PerformanceCounter {
   pub fn new() -> Self {
     PerformanceCounter {

@@ -54,23 +54,18 @@ impl InterruptHandler for DiscordInterruptHandler {
         let mut builder = http.create_message(Id::new(request.channel_id));
 
         let content = if !request.content.is_null() {
-          Some(request.content.read(&mut cpu.bus))
+          Some(request.content.read(&cpu.bus))
         } else {
           None
         };
         debug!("content: {:?}", content);
         if let Some(content) = &content {
-          builder = builder.content(&content).unwrap();
+          builder = builder.content(content).unwrap();
         }
 
         builder = builder.flags(MessageFlags::from_bits(request.flags).unwrap());
 
-        let stickers = request
-          .stickers
-          .iter()
-          .filter_map(|it| *it)
-          .map(|it| Id::<StickerMarker>::from(it))
-          .collect::<Vec<_>>();
+        let stickers = request.stickers.iter().filter_map(|it| *it).map(Id::<StickerMarker>::from).collect::<Vec<_>>();
         builder = builder.sticker_ids(&stickers).unwrap();
 
         if let Some(reply) = request.reply {
@@ -145,7 +140,7 @@ impl InterruptHandler for DiscordInterruptHandler {
           content: StringPtr((HARDWARE_BASE + 0x9900) as *const c_char),
         };
 
-        ffi_message.content.write(&mut cpu.bus, &message.content);
+        ffi_message.content.write(&cpu.bus, &message.content);
         cpu.bus.write_struct(HARDWARE_BASE + 0x6000, &ffi_message).unwrap();
         cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }

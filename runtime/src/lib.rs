@@ -55,9 +55,8 @@ mod tests {
         }
       };
 
-      match cpu.check_pending_interrupt() {
-        Some(interrupt) => cpu.handle_interrupt(interrupt),
-        None => (),
+      if let Some(interrupt) = cpu.check_pending_interrupt() {
+        cpu.handle_interrupt(interrupt);
       }
     }
   }

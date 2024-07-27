@@ -11,6 +11,12 @@ pub struct Apic {
   queue: Mutex<PriorityQueue<Interrupt, u16>>,
 }
 
+impl Default for Apic {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl Apic {
   pub fn new() -> Self {
     Self {
@@ -25,9 +31,6 @@ impl Apic {
 
   pub fn get(&self) -> Option<Interrupt> {
     let mut queue = self.queue.lock().unwrap();
-    match queue.pop() {
-      Some((interrupt, _)) => Some(interrupt),
-      None => None,
-    }
+    queue.pop().map(|(interrupt, _)| interrupt)
   }
 }
