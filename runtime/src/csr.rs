@@ -3,6 +3,8 @@ use std::time::Duration;
 pub use mizu_hwconst::csr::*;
 use mizu_hwconst::memory::CPUID_BASE;
 
+/// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
+/// up to 4096 CSRs.
 pub struct Csr {
   csrs: [u64; NUM_CSRS],
   time_passed: Box<dyn Fn() -> Duration + Send + Sync>,
