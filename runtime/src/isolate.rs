@@ -32,6 +32,11 @@ impl Isolate {
     core
   }
 
+  pub fn get_core(&self, id: u16) -> Arc<Mutex<Cpu>> {
+    let cores = self.cores.lock().unwrap();
+    cores[id as usize].clone()
+  }
+
   pub fn wake(&self) {
     info!("waking isolate");
   }

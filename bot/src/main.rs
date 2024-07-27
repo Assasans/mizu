@@ -7,6 +7,7 @@ pub mod log;
 pub mod halt;
 pub mod time;
 pub mod sipi;
+pub mod interrupt;
 mod execution_context;
 
 use std::{env, mem};
@@ -65,6 +66,7 @@ use crate::dump_performance::DumpPerformanceHandler;
 use crate::execution_context::ExecutionContext;
 use crate::halt::HaltHandler;
 use crate::http::HttpHandler;
+use crate::interrupt::IntHandler;
 use crate::log::LogHandler;
 use crate::object_storage::{ObjectStorage, ObjectStorageHandler};
 use crate::sipi::SipiHandler;
@@ -197,9 +199,10 @@ use prelude::*;
         cpu.ivt.insert(syscall::SYSCALL_HALT, Arc::new(Box::new(HaltHandler {})));
         cpu.ivt.insert(syscall::SYSCALL_TIME, Arc::new(Box::new(TimeHandler {})));
         cpu.ivt.insert(syscall::SYSCALL_SIPI, Arc::new(Box::new(SipiHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_INT, Arc::new(Box::new(IntHandler { context: context.clone() })));
       }
 
-      context.run_core(isolate.get_bootstrap_core()).await?;
+      context.run_core(isolate.get_bootstrap_core(), None).await?;
     }
     Event::MessageCreate(msg) => {
       debug!("create message: {:?}", msg.id);

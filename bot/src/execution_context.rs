@@ -1,11 +1,13 @@
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 use tracing::{debug, info};
 use twilight_http::Client;
 use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
+use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
 use runtime::cpu::Cpu;
+use runtime::interrupt::Interrupt;
 use runtime::isolate::Isolate;
 use runtime::perf_counter::CPU_TIME_LIMIT;
 use crate::{CpuExt, TickResult};
@@ -25,19 +27,24 @@ impl ExecutionContext {
     }
   }
 
-  pub async fn run_core(&self, cpu: Arc<Mutex<Cpu>>) -> Result<(), Box<dyn Error + Send + Sync>> {
+  pub async fn run_core(&self, cpu: Arc<Mutex<Cpu>>, cpu_ready: Option<oneshot::Sender<()>>) -> Result<(), Box<dyn Error + Send + Sync>> {
     debug!("starting core loop");
     let channel_id = self.channel_id.lock().await.unwrap();
     let http = self.http.lock().await.clone().unwrap();
 
-    let wfi = {
+    let (cpu_id, wfi) = {
       let mut cpu = cpu.lock().await;
-      cpu.wfi.clone()
+      (cpu.id, cpu.wfi.clone())
     };
+
+    if let Some(cpu_ready) = cpu_ready {
+      cpu_ready.send(()).unwrap();
+    }
+
     info!("started core loop");
     'wfi: loop {
       wfi.wait_for(|wfi| *wfi == false).await;
-      http.create_message(channel_id).content(&format!("wfi: reset"))?.await?;
+      // http.create_message(channel_id).content(&format!("cpu {}/wfi: reset", cpu_id))?.await?;
 
       let mut cpu = cpu.lock().await;
       loop {
@@ -56,7 +63,7 @@ impl ExecutionContext {
             http.create_message(channel_id).content(&format!("cpu {}: running too long without yield: `{:?} > {:?}`", cpu.id, cpu.perf.cpu_time, CPU_TIME_LIMIT))?.await?;
           }
           TickResult::WaitForInterrupt => {
-            http.create_message(channel_id).content(&format!("wfi: waiting for interrupt at `{:#08x}`", cpu.pc))?.await?;
+            http.create_message(channel_id).content(&format!("cpu {}/wfi: waiting for interrupt at `{:#08x}`", cpu.id, cpu.pc))?.await?;
             continue 'wfi;
           }
         }
