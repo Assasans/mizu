@@ -1,6 +1,8 @@
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
 use tracing::info;
+
 use crate::bus::Bus;
 use crate::cpu::Cpu;
 

@@ -2,15 +2,13 @@ use std::collections::HashMap;
 use std::ffi::c_char;
 use std::ptr;
 use std::sync::{Arc, RwLock};
+
 use async_trait::async_trait;
-use tracing::debug;
-use twilight_http::Client;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker};
-use twilight_standby::Standby;
 use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::memory::HARDWARE_BASE;
+use tracing::debug;
+
 use crate::execution_context::ExecutionContext;
 
 pub struct ObjectStorage {
@@ -20,7 +18,7 @@ pub struct ObjectStorage {
 impl ObjectStorage {
   pub fn new() -> Self {
     ObjectStorage {
-      data: RwLock::new(HashMap::new())
+      data: RwLock::new(HashMap::new()),
     }
   }
 
@@ -109,7 +107,7 @@ impl InterruptHandler for ObjectStorageHandler {
         cpu.bus.write_struct(HARDWARE_BASE + 0x6000, &ffi_response).unwrap();
         cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }
-      _ => unimplemented!()
+      _ => unimplemented!(),
     }
   }
 }

@@ -1,4 +1,5 @@
 use std::time::Duration;
+
 use minstant::Instant;
 
 pub const CPU_TIME_LIMIT: Duration = Duration::from_millis(10);

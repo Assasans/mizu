@@ -1,12 +1,10 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use runtime::bus::BusMemoryExt;
-use tracing::debug;
-use twilight_http::Client;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker};
-use twilight_standby::Standby;
 use runtime::cpu::{Cpu, InterruptHandler};
+use tracing::debug;
+
 use crate::execution_context::ExecutionContext;
 
 pub struct LogHandler {
@@ -23,8 +21,11 @@ impl InterruptHandler for LogHandler {
     debug!("log address: 0x{:x}", address);
     let message = cpu.bus.read_string(address).unwrap().to_string_lossy().to_string();
     debug!("log message: {}", message);
-    http.create_message(channel_id)
-      .content(&format!("sys_print cpu {}: `{}`", cpu.id, message)).unwrap()
-      .await.unwrap();
+    http
+      .create_message(channel_id)
+      .content(&format!("sys_print cpu {}: `{}`", cpu.id, message))
+      .unwrap()
+      .await
+      .unwrap();
   }
 }

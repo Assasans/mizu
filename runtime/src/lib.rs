@@ -1,33 +1,36 @@
-pub mod cpu;
+pub mod apic;
 pub mod bus;
+pub mod cpu;
+pub mod csr;
 pub mod dram;
 pub mod exception;
-pub mod csr;
 pub mod interrupt;
-pub mod perf_counter;
 pub mod isolate;
-pub mod apic;
-pub mod state_flow;
 pub mod memory;
+pub mod perf_counter;
+pub mod state_flow;
 
 #[cfg(test)]
 mod tests {
   use std::fs;
-  use tracing::{debug, error, info, trace};
-  use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+  use std::sync::Arc;
+
+  use tracing::{error, info};
+  use tracing_subscriber::prelude::*;
+  use tracing_subscriber::{fmt, EnvFilter};
+
+  use crate::bus::Bus;
   use crate::cpu::Cpu;
 
   #[tokio::test]
   async fn main() {
-    tracing_subscriber::registry()
-      .with(fmt::layer())
-      .with(EnvFilter::from_default_env())
-      .init();
+    tracing_subscriber::registry().with(fmt::layer()).with(EnvFilter::from_default_env()).init();
 
     info!("Hello, world!");
     let code = fs::read("../bot/temp/main.bin").unwrap();
     // let code = fs::read("hal.bin").unwrap();
-    let mut cpu = Cpu::new(code);
+    let bus = Arc::new(Bus::new(code));
+    let mut cpu = Cpu::new(0, bus, None);
     loop {
       let inst = match cpu.fetch() {
         Ok(inst) => inst,

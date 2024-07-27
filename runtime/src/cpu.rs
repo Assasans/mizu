@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::future::Future;
-use std::ops::{Div, Rem};
-use std::pin::Pin;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
+
 use async_trait::async_trait;
 use mizu_hwconst::memory::DRAM_BASE;
 use tracing::{debug, info, trace};
+
 use crate::apic::Apic;
 use crate::bus::Bus;
 use crate::csr;
-use crate::csr::{Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MPRV, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SIE, MASK_SPIE, MASK_SPP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC, SATP, SCAUSE, SEPC, SSTATUS, STVAL, STVEC};
+use crate::csr::{
+  Csr, MASK_MEIP, MASK_MIE, MASK_MPIE, MASK_MPP, MASK_MSIP, MASK_MTIP, MASK_SEIP, MASK_SSIP, MASK_STIP, MCAUSE, MEPC, MIE, MIP, MSTATUS, MTVAL, MTVEC,
+};
 use crate::exception::Exception;
 use crate::interrupt::Interrupt;
 use crate::isolate::Isolate;
@@ -101,20 +102,29 @@ impl Cpu {
   pub fn dump(&self) -> String {
     let mut output = String::new();
     output.write_fmt(format_args!("cpu={:<#18}\n", self.id)).unwrap();
-    output.write_fmt(format_args!("cpu_time={:<#18?} insts_retired={}\n", self.perf.cpu_time, self.perf.instructions_retired)).unwrap();
-    output.write_fmt(format_args!("pc={:<#18x}       mepc={:<#18x}\n", self.pc, self.csr.load(MEPC))).unwrap();
+    output
+      .write_fmt(format_args!(
+        "cpu_time={:<#18?} insts_retired={}\n",
+        self.perf.cpu_time, self.perf.instructions_retired
+      ))
+      .unwrap();
+    output
+      .write_fmt(format_args!("pc={:<#18x}       mepc={:<#18x}\n", self.pc, self.csr.load(MEPC)))
+      .unwrap();
 
-    let registers = [
-      (1, "ra"),
-      (2, "sp"),
-      (10, "a0"),
-      (17, "a7"),
-    ];
+    let registers = [(1, "ra"), (2, "sp"), (10, "a0"), (17, "a7")];
     for chunk in registers.chunks(4) {
-      output.push_str(&chunk.iter().map(|(index, name)| {
-        let value = self.regs[*index];
-        format!("x{:02}→{}={:<#18x}", index, name, value)
-      }).map(|it| format!("{:<26}", it)).collect::<Vec<_>>().join("  "));
+      output.push_str(
+        &chunk
+          .iter()
+          .map(|(index, name)| {
+            let value = self.regs[*index];
+            format!("x{:02}→{}={:<#18x}", index, name, value)
+          })
+          .map(|it| format!("{:<26}", it))
+          .collect::<Vec<_>>()
+          .join("  "),
+      );
       output.push_str("\n");
     }
 
@@ -125,10 +135,17 @@ impl Cpu {
       (csr::machine::POWERSTATE, "mpowerstate"),
     ];
     for chunk in csrs.chunks(4) {
-      output.push_str(&chunk.iter().map(|(address, name)| {
-        let value = self.csr.load(*address);
-        format!("{}={:<#18x}", name, value)
-      }).map(|it| format!("{:<26}", it)).collect::<Vec<_>>().join("  "));
+      output.push_str(
+        &chunk
+          .iter()
+          .map(|(address, name)| {
+            let value = self.csr.load(*address);
+            format!("{}={:<#18x}", name, value)
+          })
+          .map(|it| format!("{:<26}", it))
+          .collect::<Vec<_>>()
+          .join("  "),
+      );
       output.push_str("\n");
     }
 
@@ -138,9 +155,8 @@ impl Cpu {
   pub fn dump_registers(&self) -> String {
     let mut output = String::new();
     let abi = [
-      "zero", " ra ", " sp ", " gp ", " tp ", " t0 ", " t1 ", " t2 ", " s0 ", " s1 ", " a0 ",
-      " a1 ", " a2 ", " a3 ", " a4 ", " a5 ", " a6 ", " a7 ", " s2 ", " s3 ", " s4 ", " s5 ",
-      " s6 ", " s7 ", " s8 ", " s9 ", " s10", " s11", " t3 ", " t4 ", " t5 ", " t6 ",
+      "zero", " ra ", " sp ", " gp ", " tp ", " t0 ", " t1 ", " t2 ", " s0 ", " s1 ", " a0 ", " a1 ", " a2 ", " a3 ", " a4 ", " a5 ", " a6 ", " a7 ", " s2 ",
+      " s3 ", " s4 ", " s5 ", " s6 ", " s7 ", " s8 ", " s9 ", " s10", " s11", " t3 ", " t4 ", " t5 ", " t6 ",
     ];
     for i in (0..32).step_by(4) {
       output = format!(
@@ -229,12 +245,19 @@ impl Cpu {
     let tvec = self.csr.load(MTVEC);
     let tvec_mode = tvec & 0b11;
     let tvec_base = tvec & !0b11;
-    match tvec_mode { // Direct
-      0 => self.pc = tvec_base,
-      1 => self.pc = tvec_base + (cause << 2),
+    match tvec_mode {
+      0 => self.pc = tvec_base,                // Direct
+      1 => self.pc = tvec_base + (cause << 2), // Vector
       _ => unreachable!(),
     };
-    debug!("interrupt handler at 0x{:x}, base: 0x{:x}, mode: {}, cause offset: 0x{:x}, pc: 0x{:x}", self.pc, tvec_base, tvec_mode, cause << 2, pc);
+    debug!(
+      "interrupt handler at 0x{:x}, base: 0x{:x}, mode: {}, cause offset: 0x{:x}, pc: 0x{:x}",
+      self.pc,
+      tvec_base,
+      tvec_mode,
+      cause << 2,
+      pc
+    );
     // 3.1.14 & 4.1.7
     // When a trap is taken into S-mode (or M-mode), sepc (or mepc) is written with the virtual address
     // of the instruction that was interrupted or that encountered the exception.
@@ -316,7 +339,12 @@ impl Cpu {
     // Emulate that register x0 is hardwired with all bits equal to 0.
     self.regs[0] = 0;
 
-    trace!("pc=0x{:x} ra=0x{:x} sp=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}", self.pc, self.regs[1], self.regs[2]);
+    trace!(
+      "pc=0x{:x} ra=0x{:x} sp=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}",
+      self.pc,
+      self.regs[1],
+      self.regs[2]
+    );
 
     // let opcode = Opcode::from(opcode);
     // trace!("executing opcode {:?}", opcode);

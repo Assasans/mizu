@@ -2,8 +2,7 @@ use async_trait::async_trait;
 use runtime::cpu::{Cpu, InterruptHandler};
 use tracing::debug;
 
-pub struct HaltHandler {
-}
+pub struct HaltHandler {}
 
 #[async_trait]
 impl InterruptHandler for HaltHandler {

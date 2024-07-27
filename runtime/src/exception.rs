@@ -10,12 +10,12 @@ pub enum Exception {
   LoadAccessFault(u64),
   StoreAMOAddrMisaligned(u64),
   StoreAMOAccessFault(u64),
-  #[deprecated] EnvironmentCallFromUMode(u64),
-  #[deprecated] EnvironmentCallFromSMode(u64),
-  #[deprecated] EnvironmentCallFromMMode(u64),
-  #[deprecated] InstructionPageFault(u64),
-  #[deprecated] LoadPageFault(u64),
-  #[deprecated] StoreAMOPageFault(u64),
+  EnvironmentCallFromUMode(u64),
+  EnvironmentCallFromSMode(u64),
+  EnvironmentCallFromMMode(u64),
+  InstructionPageFault(u64),
+  LoadPageFault(u64),
+  StoreAMOPageFault(u64),
   RuntimeFault(u64),
 }
 
@@ -41,7 +41,6 @@ impl fmt::Display for Exception {
     }
   }
 }
-
 
 impl Exception {
   pub fn value(self) -> u64 {

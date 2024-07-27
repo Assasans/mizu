@@ -1,22 +1,16 @@
-use std::ffi::c_char;
 use std::sync::Arc;
+
 use async_trait::async_trait;
-use mizu_hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_get_user_t, discord_message_t, discord_user_t};
-use tracing::debug;
-use twilight_http::Client;
-use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_model::channel::message::MessageFlags;
-use twilight_model::gateway::event::Event;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker, StickerMarker};
-use twilight_standby::Standby;
 use mizu_hal_discord::discord::discord_ex_request::DiscordExRequestUnion;
-use mizu_hal_discord::prost::Message;
 use mizu_hal_discord::discord::DiscordExRequest;
-use mizu_hal_types::StringPtr;
-use runtime::bus::{Bus, BusMemoryExt};
+use mizu_hal_discord::prost::Message;
+use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
-use runtime::memory::HARDWARE_BASE;
+use tracing::debug;
+use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::Id;
+use twilight_standby::Standby;
+
 use crate::execution_context::ExecutionContext;
 
 pub struct DiscordExInterruptHandler {
@@ -48,18 +42,14 @@ impl InterruptHandler for DiscordExInterruptHandler {
           builder = builder.reply(Id::new(reference_id));
         }
 
-        let response = builder
-          .await.unwrap()
-          .model().await.unwrap();
+        let response = builder.await.unwrap().model().await.unwrap();
         cpu.regs[10] = response.id.get();
       }
       DiscordExRequestUnion::EditMessageRequest(edit_message) => {
         let mut builder = http.update_message(Id::new(edit_message.channel_id), Id::new(edit_message.message_id));
         builder = builder.content(edit_message.content.as_deref()).unwrap();
 
-        let response = builder
-          .await.unwrap()
-          .model().await.unwrap();
+        let response = builder.await.unwrap().model().await.unwrap();
         cpu.regs[10] = response.id.get();
       }
     }

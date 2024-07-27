@@ -1,9 +1,9 @@
 use std::time::SystemTime;
+
 use async_trait::async_trait;
 use runtime::cpu::{Cpu, InterruptHandler};
 
-pub struct TimeHandler {
-}
+pub struct TimeHandler {}
 
 #[async_trait]
 impl InterruptHandler for TimeHandler {

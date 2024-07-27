@@ -7,7 +7,7 @@ use tokio::sync::watch::{self, Receiver, Sender};
 pub struct StateFlow<T> {
   inner: Arc<RwLock<T>>,
   sender: Sender<()>,
-  receiver: Receiver<()>
+  receiver: Receiver<()>,
 }
 
 impl<T: Clone> StateFlow<T> {
@@ -16,7 +16,7 @@ impl<T: Clone> StateFlow<T> {
     Self {
       inner: Arc::new(RwLock::new(value)),
       sender,
-      receiver
+      receiver,
     }
   }
 

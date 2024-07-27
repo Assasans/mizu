@@ -1,12 +1,11 @@
-use std::{ptr, slice, u128};
 use std::ffi::CString;
 use std::mem::size_of;
 use std::sync::Mutex;
-use std::time::{Instant, SystemTime};
+use std::{ptr, slice};
 
 use mizu_hwconst::memory::*;
-use rand::{Rng, RngCore, thread_rng};
-use tracing::{debug, error, trace, warn};
+use rand::{thread_rng, RngCore};
+use tracing::{debug, error, trace};
 
 use crate::dram::Dram;
 use crate::exception::Exception;
@@ -14,7 +13,6 @@ use crate::exception::Exception;
 pub struct Bus {
   pub dram: Mutex<Dram>,
   pub hardware: Mutex<Vec<u8>>,
-  start_time: Instant,
 }
 
 impl Bus {
@@ -22,7 +20,6 @@ impl Bus {
     Self {
       dram: Mutex::new(Dram::new(code)),
       hardware: Mutex::new(vec![0xaa; HARDWARE_SIZE as usize]),
-      start_time: Instant::now(),
     }
   }
 
@@ -41,7 +38,7 @@ impl Bus {
             };
             Ok(0)
           }
-          _ => Err(Exception::LoadAccessFault(addr))
+          _ => Err(Exception::LoadAccessFault(addr)),
         };
       }
       RANDOM_BASE..=RANDOM_END => {
@@ -171,9 +168,7 @@ impl BusMemoryExt for Bus {
   }
 
   fn write_struct<T>(&self, addr: u64, value: &T) -> Result<(), Exception> {
-    let bytes = unsafe {
-      slice::from_raw_parts((value as *const T) as *const u8, size_of::<T>())
-    };
+    let bytes = unsafe { slice::from_raw_parts((value as *const T) as *const u8, size_of::<T>()) };
     self.write(addr, bytes)
   }
 

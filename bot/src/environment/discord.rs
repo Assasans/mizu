@@ -1,19 +1,20 @@
 use std::ffi::c_char;
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use mizu_hal_types::discord::{action, discord_create_message_t, discord_create_reaction_t, discord_get_user_t, discord_message_t, discord_user_t};
-use tracing::debug;
-use twilight_http::Client;
-use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_model::channel::message::MessageFlags;
-use twilight_model::gateway::event::Event;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker, StickerMarker};
-use twilight_standby::Standby;
 use mizu_hal_types::StringPtr;
 use runtime::bus::{Bus, BusMemoryExt};
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::memory::HARDWARE_BASE;
+use tracing::debug;
+use twilight_http::request::channel::reaction::RequestReactionType;
+use twilight_model::channel::message::MessageFlags;
+use twilight_model::gateway::event::Event;
+use twilight_model::id::marker::{GuildMarker, StickerMarker};
+use twilight_model::id::Id;
+use twilight_standby::Standby;
+
 use crate::execution_context::ExecutionContext;
 
 pub struct DiscordInterruptHandler {
@@ -64,7 +65,9 @@ impl InterruptHandler for DiscordInterruptHandler {
 
         builder = builder.flags(MessageFlags::from_bits(request.flags).unwrap());
 
-        let stickers = request.stickers.iter()
+        let stickers = request
+          .stickers
+          .iter()
           .filter_map(|it| *it)
           .map(|it| Id::<StickerMarker>::from(it))
           .collect::<Vec<_>>();
@@ -74,9 +77,7 @@ impl InterruptHandler for DiscordInterruptHandler {
           builder = builder.reply(Id::from(reply));
         }
 
-        let response = builder
-          .await.unwrap()
-          .model().await.unwrap();
+        let response = builder.await.unwrap().model().await.unwrap();
 
         let ffi_message = discord_message_t {
           id: response.id.get(),
@@ -93,20 +94,19 @@ impl InterruptHandler for DiscordInterruptHandler {
         let request = cpu.bus.read_struct::<discord_create_reaction_t>(address).unwrap();
         debug!("request: {:?}", request);
 
-        http.create_reaction(
-          Id::new(request.channel_id),
-          Id::new(request.message_id),
-          &RequestReactionType::Unicode { name: &request.emoji.read(&cpu.bus) },
-        ).await.unwrap();
+        http
+          .create_reaction(Id::new(request.channel_id), Id::new(request.message_id), &RequestReactionType::Unicode {
+            name: &request.emoji.read(&cpu.bus),
+          })
+          .await
+          .unwrap();
         cpu.regs[10] = 0;
       }
       action::GET_USER => {
         let request = cpu.bus.read_struct::<discord_get_user_t>(address).unwrap();
         debug!("request: {:?}", request);
 
-        let response = http.user(Id::new(request.user_id))
-          .await.unwrap()
-          .model().await.unwrap();
+        let response = http.user(Id::new(request.user_id)).await.unwrap().model().await.unwrap();
 
         let ffi_user = discord_user_t {
           id: response.id.get(),
@@ -120,13 +120,17 @@ impl InterruptHandler for DiscordInterruptHandler {
         cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }
       10 => {
-        let message = self.standby.wait_for(self.guild_id, |event: &Event| {
-          if let Event::MessageCreate(message) = event {
-            !message.author.bot
-          } else {
-            false
-          }
-        }).await.unwrap();
+        let message = self
+          .standby
+          .wait_for(self.guild_id, |event: &Event| {
+            if let Event::MessageCreate(message) = event {
+              !message.author.bot
+            } else {
+              false
+            }
+          })
+          .await
+          .unwrap();
         let message = if let Event::MessageCreate(message) = message {
           message
         } else {
@@ -145,7 +149,7 @@ impl InterruptHandler for DiscordInterruptHandler {
         cpu.bus.write_struct(HARDWARE_BASE + 0x6000, &ffi_message).unwrap();
         cpu.regs[10] = HARDWARE_BASE + 0x6000;
       }
-      _ => unimplemented!()
+      _ => unimplemented!(),
     }
   }
 }

@@ -1,12 +1,13 @@
 use std::ops::Range;
-use mizu_hwconst::memory::{DRAM_BASE, DRAM_SIZE};
 
+use mizu_hwconst::memory::{DRAM_BASE, DRAM_SIZE};
 use tracing::{error, warn};
+
 use crate::exception::Exception;
 
 pub struct Dram {
   pub dram: Vec<u8>,
-  pub code_range: Range<u64>
+  pub code_range: Range<u64>,
 }
 
 impl Dram {
@@ -15,7 +16,7 @@ impl Dram {
     dram.splice(..code.len(), code.into_iter());
     Dram {
       dram,
-      code_range: DRAM_BASE..DRAM_BASE + 0x12000
+      code_range: DRAM_BASE..DRAM_BASE + 0x12000,
     }
   }
 

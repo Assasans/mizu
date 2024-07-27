@@ -1,21 +1,12 @@
 use std::sync::Arc;
-use std::time::Duration;
+
 use async_trait::async_trait;
-use tokio::time::sleep;
-use mizu_hal_types::syscall;
-use runtime::cpu::{Cpu, InterruptHandler};
-use tracing::{debug, info};
 use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
+use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::interrupt::Interrupt;
-use runtime::memory::HARDWARE_BASE;
-use crate::discord::DiscordInterruptHandler;
-use crate::dump_performance::DumpPerformanceHandler;
+use tracing::{debug, info};
+
 use crate::execution_context::ExecutionContext;
-use crate::halt::HaltHandler;
-use crate::http::HttpHandler;
-use crate::log::LogHandler;
-use crate::object_storage::ObjectStorageHandler;
-use crate::time::TimeHandler;
 
 pub struct IntHandler {
   pub context: Arc<ExecutionContext>,

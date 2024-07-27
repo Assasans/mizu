@@ -1,9 +1,11 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
-use runtime::bus::BusMemoryExt;
-use runtime::interrupt::Interrupt;
 use runtime::apic::INTERRUPT_PRIORITY_NORMAL;
+use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
+use runtime::interrupt::Interrupt;
+
 use crate::execution_context::ExecutionContext;
 
 pub struct DumpPerformanceHandler {
@@ -16,9 +18,12 @@ impl InterruptHandler for DumpPerformanceHandler {
     let http = self.context.http.lock().await.as_ref().unwrap().clone();
     let channel_id = self.context.channel_id.lock().await.unwrap();
 
-    http.create_message(channel_id)
-      .content(&format!("performance dump: ```c\nperf={:?}\npc = 0x{:x}```", cpu.perf, cpu.pc)).unwrap()
-      .await.unwrap();
+    http
+      .create_message(channel_id)
+      .content(&format!("performance dump: ```c\nperf={:?}\npc = 0x{:x}```", cpu.perf, cpu.pc))
+      .unwrap()
+      .await
+      .unwrap();
     cpu.perf.reset();
 
     cpu.regs[10] = 0x50;
@@ -34,8 +39,11 @@ impl InterruptHandler for DumpPerformanceHandler {
     cpu.saved_regs.fill(0);
     cpu.bus.write_string(ptr, "the fog is coming shit").unwrap();
 
-    http.create_message(channel_id)
-      .content(&format!("allocated: `0x{:x}`", ptr)).unwrap()
-      .await.unwrap();
+    http
+      .create_message(channel_id)
+      .content(&format!("allocated: `0x{:x}`", ptr))
+      .unwrap()
+      .await
+      .unwrap();
   }
 }

@@ -1,18 +1,20 @@
 use std::sync::Mutex;
+
 use priority_queue::PriorityQueue;
+
 use crate::interrupt::Interrupt;
 
 pub const INTERRUPT_PRIORITY_NORMAL: u16 = 10;
 
 /// Advanced Programmable Interrupt Controller.
 pub struct Apic {
-  queue: Mutex<PriorityQueue<Interrupt, u16>>
+  queue: Mutex<PriorityQueue<Interrupt, u16>>,
 }
 
 impl Apic {
   pub fn new() -> Self {
     Self {
-      queue: Mutex::new(PriorityQueue::new())
+      queue: Mutex::new(PriorityQueue::new()),
     }
   }
 
@@ -25,7 +27,7 @@ impl Apic {
     let mut queue = self.queue.lock().unwrap();
     match queue.pop() {
       Some((interrupt, _)) => Some(interrupt),
-      None => None
+      None => None,
     }
   }
 }

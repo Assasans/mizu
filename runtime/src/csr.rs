@@ -1,17 +1,18 @@
 use std::time::Duration;
-use mizu_hwconst::memory::CPUID_BASE;
+
 pub use mizu_hwconst::csr::*;
+use mizu_hwconst::memory::CPUID_BASE;
 
 pub struct Csr {
   csrs: [u64; NUM_CSRS],
-  time_passed: Box<dyn Fn() -> Duration + Send + Sync>
+  time_passed: Box<dyn Fn() -> Duration + Send + Sync>,
 }
 
 impl Csr {
   pub fn new(time_passed: Box<dyn Fn() -> Duration + Send + Sync>) -> Csr {
     Self {
       csrs: [0; NUM_CSRS],
-      time_passed
+      time_passed,
     }
   }
 

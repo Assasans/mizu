@@ -1,15 +1,13 @@
 use std::ffi::c_char;
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use reqwest::Method;
-use tracing::debug;
-use twilight_http::Client;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker};
-use twilight_standby::Standby;
 use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
 use runtime::memory::HARDWARE_BASE;
+use tracing::debug;
+
 use crate::execution_context::ExecutionContext;
 
 pub struct HttpHandler {
