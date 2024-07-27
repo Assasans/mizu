@@ -1,6 +1,6 @@
 use std::ffi::CString;
 use std::mem::size_of;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{ptr, slice};
 
 use mizu_hwconst::memory::*;
@@ -11,16 +11,16 @@ use crate::dram::Dram;
 use crate::exception::Exception;
 
 pub struct Bus {
-  pub dram: Mutex<Dram>,
-  pub hardware: Mutex<Vec<u8>>,
+  pub dram: RwLock<Dram>,
+  pub hardware: RwLock<Vec<u8>>,
 }
 
 impl Bus {
   #[must_use]
   pub fn new(code: Vec<u8>) -> Self {
     Self {
-      dram: Mutex::new(Dram::new(code)),
-      hardware: Mutex::new(vec![0xaa; HARDWARE_SIZE as usize]),
+      dram: RwLock::new(Dram::new(code)),
+      hardware: RwLock::new(vec![0xaa; HARDWARE_SIZE as usize]),
     }
   }
 
@@ -54,7 +54,7 @@ impl Bus {
         }
         let nbytes = size / 8;
         let index = (addr - HARDWARE_BASE) as usize;
-        let memory = self.hardware.lock().unwrap();
+        let memory = self.hardware.read().unwrap();
         let mut code = memory[index] as u64;
         // shift the bytes to build up the desired value
         for i in 1..nbytes {
@@ -63,7 +63,7 @@ impl Bus {
 
         Ok(code)
       }
-      DRAM_BASE..=DRAM_END => self.dram.lock().unwrap().load(addr, size),
+      DRAM_BASE..=DRAM_END => self.dram.read().unwrap().load(addr, size),
       _ => {
         error!("invalid load at 0x{addr:x}");
         Err(Exception::LoadAccessFault(addr))
@@ -83,12 +83,12 @@ impl Bus {
         let index = (addr - HARDWARE_BASE) as usize;
         for i in 0..nbytes {
           let offset = 8 * i as usize;
-          let mut memory = self.hardware.lock().unwrap();
+          let mut memory = self.hardware.write().unwrap();
           memory[index + i as usize] = ((value >> offset) & 0xff) as u8;
         }
         Ok(())
       }
-      DRAM_BASE..=DRAM_END => self.dram.lock().unwrap().store(addr, size, value),
+      DRAM_BASE..=DRAM_END => self.dram.write().unwrap().store(addr, size, value),
       _ => Err(Exception::StoreAMOAccessFault(addr)),
     }
   }
