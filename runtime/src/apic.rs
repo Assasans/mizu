@@ -18,6 +18,7 @@ impl Default for Apic {
 }
 
 impl Apic {
+  #[must_use]
   pub fn new() -> Self {
     Self {
       queue: Mutex::new(PriorityQueue::new()),
@@ -29,6 +30,7 @@ impl Apic {
     queue.push(interrupt, priority);
   }
 
+  #[must_use]
   pub fn get(&self) -> Option<Interrupt> {
     let mut queue = self.queue.lock().unwrap();
     queue.pop().map(|(interrupt, _)| interrupt)

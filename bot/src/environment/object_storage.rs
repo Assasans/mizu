@@ -17,7 +17,7 @@ pub struct ObjectStorage {
 
 impl ObjectStorage {
   pub fn new() -> Self {
-    ObjectStorage {
+    Self {
       data: RwLock::new(HashMap::new()),
     }
   }

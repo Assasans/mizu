@@ -52,7 +52,7 @@ impl Cpu {
 
     // TODO(Assasans): Wtf
     let start_time = Box::leak(Box::new(Instant::now()));
-    let time = || Instant::now() - *start_time;
+    let time = || start_time.elapsed();
 
     let pc = DRAM_BASE;
 
@@ -63,7 +63,7 @@ impl Cpu {
     let ivt = HashMap::new();
     let perf = PerformanceCounter::new();
 
-    Cpu {
+    Self {
       id,
       isolate,
       regs: registers,

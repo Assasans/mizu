@@ -14,7 +14,8 @@ pub enum Interrupt {
 }
 
 impl Interrupt {
-  pub fn code(&self) -> u64 {
+  #[must_use]
+  pub const fn code(&self) -> u64 {
     use Interrupt::*;
     match self {
       SupervisorSoftwareInterrupt => 1 | MASK_INTERRUPT_BIT,

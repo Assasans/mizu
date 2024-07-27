@@ -14,7 +14,7 @@ impl Dram {
   pub fn new(code: Vec<u8>) -> Self {
     let mut dram = vec![0; DRAM_SIZE as usize];
     dram.splice(..code.len(), code);
-    Dram {
+    Self {
       dram,
       code_range: DRAM_BASE..DRAM_BASE + 0x12000,
     }

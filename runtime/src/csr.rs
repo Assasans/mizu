@@ -9,13 +9,15 @@ pub struct Csr {
 }
 
 impl Csr {
-  pub fn new(time_passed: Box<dyn Fn() -> Duration + Send + Sync>) -> Csr {
+  #[must_use]
+  pub fn new(time_passed: Box<dyn Fn() -> Duration + Send + Sync>) -> Self {
     Self {
       csrs: [0; NUM_CSRS],
       time_passed,
     }
   }
 
+  #[must_use]
   pub fn dump_csrs(&self) -> String {
     format!(
       "// control status registers\n{}\n{}\n",
@@ -36,6 +38,7 @@ impl Csr {
     )
   }
 
+  #[must_use]
   pub fn load(&self, addr: usize) -> u64 {
     match addr {
       SIE => self.csrs[MIE] & self.csrs[MIDELEG],
@@ -57,12 +60,14 @@ impl Csr {
   }
 
   #[inline]
-  pub fn is_medelegated(&self, cause: u64) -> bool {
+  #[must_use]
+  pub const fn is_medelegated(&self, cause: u64) -> bool {
     (self.csrs[MEDELEG].wrapping_shr(cause as u32) & 1) == 1
   }
 
   #[inline]
-  pub fn is_midelegated(&self, cause: u64) -> bool {
+  #[must_use]
+  pub const fn is_midelegated(&self, cause: u64) -> bool {
     (self.csrs[MIDELEG].wrapping_shr(cause as u32) & 1) == 1
   }
 }

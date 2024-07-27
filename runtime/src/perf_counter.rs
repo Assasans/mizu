@@ -18,8 +18,9 @@ impl Default for PerformanceCounter {
 }
 
 impl PerformanceCounter {
+  #[must_use]
   pub fn new() -> Self {
-    PerformanceCounter {
+    Self {
       cpu_time: Duration::default(),
       cpu_time_start: None,
       instructions_retired: 0,

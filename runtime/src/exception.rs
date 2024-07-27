@@ -43,7 +43,8 @@ impl fmt::Display for Exception {
 }
 
 impl Exception {
-  pub fn value(self) -> u64 {
+  #[must_use]
+  pub const fn value(self) -> u64 {
     use Exception::*;
     match self {
       InstructionAddrMisaligned(addr) => addr,
@@ -64,7 +65,8 @@ impl Exception {
     }
   }
 
-  pub fn code(self) -> u64 {
+  #[must_use]
+  pub const fn code(self) -> u64 {
     use Exception::*;
     match self {
       InstructionAddrMisaligned(_) => 0,
@@ -85,7 +87,8 @@ impl Exception {
     }
   }
 
-  pub fn is_fatal(self) -> bool {
+  #[must_use]
+  pub const fn is_fatal(self) -> bool {
     use Exception::*;
     match self {
       InstructionAddrMisaligned(_)

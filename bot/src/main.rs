@@ -119,7 +119,7 @@ impl Default for Contexts {
 
 impl Contexts {
   pub fn new() -> Self {
-    Contexts {
+    Self {
       contexts: RwLock::new(HashMap::new()),
     }
   }
@@ -238,7 +238,7 @@ use prelude::*;
         cpu.ivt.insert(
           syscall::SYSCALL_DISCORD_EX,
           Arc::new(Box::new(DiscordExInterruptHandler {
-            context: context.clone(),
+            context,
             guild_id: msg.guild_id.unwrap(),
             standby: standby.clone(),
           })),
@@ -287,7 +287,7 @@ use prelude::*;
         cpu.ivt.insert(
           syscall::SYSCALL_DISCORD_EX,
           Arc::new(Box::new(DiscordExInterruptHandler {
-            context: context.clone(),
+            context,
             guild_id: reaction.guild_id.unwrap(),
             standby: standby.clone(),
           })),
@@ -430,7 +430,7 @@ impl CpuExt for Cpu {
       Ok(inst) => inst,
       Err(exception) => {
         self.handle_exception(exception);
-        if let Exception::InstructionAccessFault(0) = &exception {
+        if matches!(&exception, Exception::InstructionAccessFault(0)) {
           return Ok(TickResult::Eof);
         }
         if exception.is_fatal() {

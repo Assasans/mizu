@@ -22,7 +22,7 @@ impl<T: Clone> StateFlow<T> {
 
   pub fn set(&self, value: T) {
     *self.inner.write().unwrap() = value;
-    self.sender.send(()).unwrap() // It is not possible that [receiver] will be dropped
+    self.sender.send(()).unwrap(); // It is not possible that [receiver] will be dropped
   }
 
   pub async fn await_change(&self) -> T {
@@ -53,6 +53,7 @@ impl<T: Clone> StateFlow<T> {
     }
   }
 
+  #[must_use]
   pub fn get(&self) -> T {
     self.inner.read().unwrap().clone()
   }

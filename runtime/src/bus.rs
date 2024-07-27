@@ -16,7 +16,8 @@ pub struct Bus {
 }
 
 impl Bus {
-  pub fn new(code: Vec<u8>) -> Bus {
+  #[must_use]
+  pub fn new(code: Vec<u8>) -> Self {
     Self {
       dram: Mutex::new(Dram::new(code)),
       hardware: Mutex::new(vec![0xaa; HARDWARE_SIZE as usize]),
@@ -103,7 +104,7 @@ pub trait BusMemoryExt {
   fn write_string(&self, addr: u64, value: &str) -> Result<(), Exception>;
 }
 
-fn previous_power_of_two(value: u64) -> u64 {
+const fn previous_power_of_two(value: u64) -> u64 {
   let value = value | (value >> 1);
   let value = value | (value >> 2);
   let value = value | (value >> 4);
