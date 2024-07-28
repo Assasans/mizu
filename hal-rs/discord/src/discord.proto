@@ -37,6 +37,12 @@ message CreateMessageRequest {
   Embed embed = 4; // Optional embed object for rich content
   repeated string allowed_mentions = 5; // Controls which users get mentioned
   optional uint64 reference_id = 6; // Message ID to reply to, if any
+  repeated CreateAttachment attachments = 7;
+}
+
+message CreateAttachment {
+  string name = 1;
+  bytes data = 2;
 }
 
 message EditMessageRequest {

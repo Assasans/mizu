@@ -7,6 +7,7 @@ use mizu_hal_discord::prost::Message;
 use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
 use tracing::debug;
+use twilight_model::http::attachment::Attachment;
 use twilight_model::id::marker::GuildMarker;
 use twilight_model::id::Id;
 use twilight_standby::Standby;
@@ -41,6 +42,13 @@ impl InterruptHandler for DiscordExInterruptHandler {
         if let Some(reference_id) = create_message.reference_id {
           builder = builder.reply(Id::new(reference_id));
         }
+
+        let attachments = create_message
+          .attachments
+          .iter()
+          .map(|attachment| Attachment::from_bytes(attachment.name.clone(), attachment.data.clone(), 1))
+          .collect::<Vec<_>>();
+        builder = builder.attachments(&attachments).unwrap();
 
         let response = builder.await.unwrap().model().await.unwrap();
         cpu.regs[10] = response.id.get();

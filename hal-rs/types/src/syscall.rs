@@ -1,5 +1,5 @@
 pub const SYSCALL_DISCORD: u64 = 10;
-pub const SYSCALL_DISCORD_EX: u64 = 18;
+pub const SYSCALL_DISCORD_EX: u64 = 9;
 pub const SYSCALL_PERF_DUMP: u64 = 11;
 pub const SYSCALL_HTTP: u64 = 12;
 pub const SYSCALL_OBJECT_STORAGE: u64 = 13;

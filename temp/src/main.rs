@@ -8,39 +8,25 @@ mod prelude;
 
 use prelude::*;
 
+#[macro_use]
+extern crate alloc;
+
 use mizu_hal::discord::*;
 use mizu_hal::discord::discord::*;
 use mizu_hal::discord::discord::discord_ex_request::DiscordExRequestUnion;
-use mizu_hal::discord::prost::Message;
 use mizu_hal::discord::prost::alloc::string::ToString;
 
 #[link_section = ".start"]
 #[no_mangle]
 pub unsafe extern "C" fn _start() {
-  __init_ivt_vector(core::ptr::addr_of!(__IVT_START));
-  loop {
-    __wfi();
-  }
+  let id = __discord_ex(DiscordExRequestUnion::CreateMessageRequest(CreateMessageRequest {
+    channel_id: 1173644182062116956,
+    reference_id: Some(1265732886338736242),
+    content: Some("иди нахуй".to_string()),
+    attachments: vec![
+      CreateAttachment { name: "amongus.txt".to_string(), data: "Hello, 水の世界！".into() }
+    ],
+    ..Default::default()
+  })) as u64;
   halt();
-}
-
-pub unsafe extern "C" fn int_discord() {
-  let len: u64;
-  let ptr: *const core::ffi::c_void;
-  asm!("", out("a0") len, out("a1") ptr);
-  println!("discord interrupt: len={}, ptr={:#x}", len, ptr as u64);
-  let data = core::slice::from_raw_parts(ptr as *const u8, len as usize);
-  // println!("{:?}", data);
-  let event = DiscordExEvent::decode(data).unwrap();
-  println!("{:?}", event);
-  asm!("mret");
-}
-
-pub unsafe extern "C" fn int_noop() {
-  asm!("mret");
-}
-
-ivt! {
-  1 => int_noop,
-  17 => int_discord
 }
