@@ -54,6 +54,18 @@ pub fn op_32(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
+    (0x6, 0x1) => {
+      // remw
+      cpu.regs[inst.rd()] = (cpu.regs[inst.rs1()] as i32).wrapping_rem(cpu.regs[inst.rs2()] as i32) as i64 as u64;
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    }
+    (0x7, 0x1) => {
+      // remuw
+      cpu.regs[inst.rd()] = (cpu.regs[inst.rs1()] as u32).wrapping_rem(cpu.regs[inst.rs2()] as u32) as u64;
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    }
     _ => {
       cpu.perf.end_cpu_time();
       Err(Exception::IllegalInstruction(*inst))

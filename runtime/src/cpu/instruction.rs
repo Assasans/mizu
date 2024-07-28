@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 
 pub struct Instruction(pub u64);
@@ -7,6 +8,19 @@ impl Deref for Instruction {
 
   fn deref(&self) -> &Self::Target {
     &self.0
+  }
+}
+
+impl Debug for Instruction {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Instruction")
+      .field("opcode", &self.opcode())
+      .field("rd", &self.rd())
+      .field("rs1", &self.rs1())
+      .field("rs2", &self.rs2())
+      .field("funct3", &self.funct3())
+      .field("funct7", &self.funct7())
+      .finish()
   }
 }
 

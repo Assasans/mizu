@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::cpu::Instruction;
+
 #[derive(Debug, Copy, Clone)]
 pub enum Exception {
   InstructionAddrMisaligned(u64),
@@ -25,7 +27,7 @@ impl fmt::Display for Exception {
     match self {
       InstructionAddrMisaligned(addr) => write!(f, "Instruction address misaligned {:#x}", addr),
       InstructionAccessFault(addr) => write!(f, "Instruction access fault {:#x}", addr),
-      IllegalInstruction(inst) => write!(f, "Illegal instruction {:#x}", inst),
+      IllegalInstruction(inst) => write!(f, "Illegal instruction {:#x}, {:?}", inst, Instruction(*inst)),
       Breakpoint(pc) => write!(f, "Breakpoint {:#x}", pc),
       LoadAccessMisaligned(addr) => write!(f, "Load access {:#x}", addr),
       LoadAccessFault(addr) => write!(f, "Load access fault {:#x}", addr),
