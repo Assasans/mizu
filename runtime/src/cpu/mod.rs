@@ -80,7 +80,7 @@ impl Cpu {
     let mut registers = [0; 32];
 
     // Set the register x2 with the size of a memory when a CPU is instantiated.
-    registers[2] = DRAM_BASE + (0x16000 * (id + 1) as u64);
+    registers[2] = DRAM_BASE + (0x32000 * (id + 1) as u64);
     debug!("initialized sp=0x{:x}", registers[2]);
 
     // TODO(Assasans): Wtf

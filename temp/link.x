@@ -1,11 +1,11 @@
 ENTRY(_start)
 MEMORY
 {
-  rom : ORIGIN = 0xffffffff80000000, LENGTH = 0x12000
-  ram : ORIGIN = 0xffffffff80012000, LENGTH = 0x12000
+  rom : ORIGIN = 0xffffffff80000000, LENGTH = 0x24000
+  ram : ORIGIN = 0xffffffff80024000, LENGTH = 0x48000
 }
 
-STACK_SIZE = 0x1000;
+STACK_SIZE = 0x16000;
 
 SECTIONS
 {
@@ -24,7 +24,7 @@ SECTIONS
 
   .stack (NOLOAD) :
   {
-    . = 0xffffffff80016000;
+    . = 0xffffffff80032000;
     . = ALIGN(8);
     . = . + STACK_SIZE;
     . = ALIGN(8);
