@@ -1067,6 +1067,7 @@ dependencies = [
 name = "mizu-hal"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "mini-backtrace",
  "mizu-hal-discord",
  "mizu-hal-types",
