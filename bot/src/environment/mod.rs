@@ -8,3 +8,4 @@ pub mod log;
 pub mod object_storage;
 pub mod sipi;
 pub mod time;
+pub mod png;

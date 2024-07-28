@@ -10,4 +10,5 @@ pub use mizu_hal::power::*;
 pub use mizu_hal::types::syscall::*;
 pub use mizu_hal::types::StringPtr;
 pub use mizu_hal::time::*;
+pub use mizu_hal::device::*;
 pub use mizu_hal::mini_backtrace as mini_backtrace;

@@ -9,6 +9,7 @@ pub mod discord;
 pub mod ivt;
 pub mod power;
 pub mod time;
+pub mod device;
 
 pub use mizu_hal_types as types;
 pub use mini_backtrace as mini_backtrace;

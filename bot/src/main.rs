@@ -49,6 +49,7 @@ use crate::environment::http::HttpHandler;
 use crate::environment::interrupt::IntHandler;
 use crate::environment::log::LogHandler;
 use crate::environment::object_storage::{ObjectStorage, ObjectStorageHandler};
+use crate::environment::png::PngHandler;
 use crate::environment::sipi::SipiHandler;
 use crate::environment::time::TimeHandler;
 use crate::execution_context::ExecutionContext;
@@ -212,6 +213,9 @@ use prelude::*;
         cpu
           .ivt
           .insert(syscall::SYSCALL_INT, Arc::new(Box::new(IntHandler { context: context.clone() })));
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_PNG, Arc::new(Box::new(PngHandler {})));
       }
 
       context.run_core(isolate.get_bootstrap_core(), None).await?;

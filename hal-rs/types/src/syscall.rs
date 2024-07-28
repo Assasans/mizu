@@ -8,3 +8,4 @@ pub const SYSCALL_HALT: u64 = 15;
 pub const SYSCALL_TIME: u64 = 16;
 pub const SYSCALL_SIPI: u64 = 17;
 pub const SYSCALL_INT: u64 = 18;
+pub const SYSCALL_PNG: u64 = 19;
