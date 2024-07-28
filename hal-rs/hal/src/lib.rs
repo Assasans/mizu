@@ -64,16 +64,25 @@ pub fn debug_log_bytes(message: *const u8) {
 }
 
 #[no_mangle]
-pub extern "C" fn memset(s: *mut u8, c: i32, len: usize) -> *mut u8 {
-  let mut dst = s;
-  let mut remaining_len = len;
+pub extern "C" fn memset(s: *mut u8, c: i32, mut len: usize) -> *mut u8 {
+  let val64 = (c as u8 as u64).wrapping_mul(0x0101010101010101);
+  let mut dest64 = s as *mut u64;
 
-  while remaining_len > 0 {
+  while len >= 8 {
     unsafe {
-      *dst = c as u8;
+      ptr::write(dest64, val64);
+      dest64 = dest64.offset(1);
     }
-    dst = unsafe { dst.offset(1) };
-    remaining_len -= 1;
+    len -= 8;
+  }
+
+  let mut dest8 = dest64 as *mut u8;
+  while len > 0 {
+    unsafe {
+      ptr::write(dest8, c as u8);
+      dest8 = dest8.offset(1);
+    }
+    len -= 1;
   }
 
   s
@@ -104,6 +113,15 @@ pub extern "C" fn memcmp(b: *const u8, c: *const u8, len: usize) -> i32 {
 pub extern "C" fn memcpy(dst: *mut u8, src: *const u8, mut n: usize) -> *mut u8 {
   let mut d = dst;
   let mut s = src;
+
+  while n >= 8 {
+    unsafe {
+      ptr::write(d as *mut u64, ptr::read(s as *const u64));
+      d = d.offset(8);
+      s = s.offset(8);
+    }
+    n -= 8;
+  }
 
   while n > 0 {
     unsafe {
