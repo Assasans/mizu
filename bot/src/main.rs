@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use mizu_hal_discord::discord::discord_ex_event::DiscordExEventUnion;
@@ -136,6 +137,65 @@ async fn handle_event(
   contexts: Arc<Contexts>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
   match event {
+    Event::MessageCreate(msg) if msg.content.starts_with("!load") => {
+      let context = {
+        let mut contexts = contexts.contexts.write().await;
+        let context = contexts.entry(msg.guild_id.unwrap());
+        context.or_insert_with(|| Arc::new(ExecutionContext::new())).clone()
+      };
+      *context.http.lock().await = Some(http.clone());
+      *context.channel_id.lock().await = Some(msg.channel_id);
+
+      let code = fs::read("target/riscv64g-unknown-mizu-elf/debug/temp.bin").await?;
+      let bus = Arc::new(Bus::new(code));
+      let isolate = context.isolate.lock().await.insert(Isolate::new(bus)).clone();
+
+      // Initialize environment
+      {
+        let cpu = isolate.get_bootstrap_core();
+        let mut cpu = cpu.lock().await;
+        cpu.ivt.insert(
+          syscall::SYSCALL_DISCORD,
+          Arc::new(Box::new(DiscordInterruptHandler {
+            context: context.clone(),
+            guild_id: msg.guild_id.unwrap(),
+            standby: standby.clone(),
+          })),
+        );
+        cpu.ivt.insert(
+          syscall::SYSCALL_DISCORD_EX,
+          Arc::new(Box::new(DiscordExInterruptHandler { context: context.clone() })),
+        );
+        cpu.ivt.insert(
+          syscall::SYSCALL_PERF_DUMP,
+          Arc::new(Box::new(DumpPerformanceHandler { context: context.clone() })),
+        );
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_HTTP, Arc::new(Box::new(HttpHandler { context: context.clone() })));
+        cpu.ivt.insert(
+          syscall::SYSCALL_OBJECT_STORAGE,
+          Arc::new(Box::new(ObjectStorageHandler {
+            context: context.clone(),
+            object_storage: object_storage.clone(),
+          })),
+        );
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_LOG, Arc::new(Box::new(LogHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_HALT, Arc::new(Box::new(HaltHandler {})));
+        cpu.ivt.insert(syscall::SYSCALL_TIME, Arc::new(Box::new(TimeHandler {})));
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_SIPI, Arc::new(Box::new(SipiHandler { context: context.clone() })));
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_INT, Arc::new(Box::new(IntHandler { context: context.clone() })));
+        cpu.ivt.insert(syscall::SYSCALL_PNG, Arc::new(Box::new(PngHandler {})));
+      }
+
+      context.run_core(isolate.get_bootstrap_core(), None).await?;
+    }
     Event::MessageCreate(msg) if msg.content.starts_with("!vm") => {
       let code = msg.content.trim_start_matches("!vm").trim_start();
       let code = code.trim_start_matches("```").trim_start_matches("rs\n").trim_end_matches("```").trim();
@@ -182,11 +242,7 @@ use prelude::*;
         );
         cpu.ivt.insert(
           syscall::SYSCALL_DISCORD_EX,
-          Arc::new(Box::new(DiscordExInterruptHandler {
-            context: context.clone(),
-            guild_id: msg.guild_id.unwrap(),
-            standby: standby.clone(),
-          })),
+          Arc::new(Box::new(DiscordExInterruptHandler { context: context.clone() })),
         );
         cpu.ivt.insert(
           syscall::SYSCALL_PERF_DUMP,
@@ -213,9 +269,7 @@ use prelude::*;
         cpu
           .ivt
           .insert(syscall::SYSCALL_INT, Arc::new(Box::new(IntHandler { context: context.clone() })));
-        cpu
-          .ivt
-          .insert(syscall::SYSCALL_PNG, Arc::new(Box::new(PngHandler {})));
+        cpu.ivt.insert(syscall::SYSCALL_PNG, Arc::new(Box::new(PngHandler {})));
       }
 
       context.run_core(isolate.get_bootstrap_core(), None).await?;
@@ -239,14 +293,9 @@ use prelude::*;
             standby: standby.clone(),
           })),
         );
-        cpu.ivt.insert(
-          syscall::SYSCALL_DISCORD_EX,
-          Arc::new(Box::new(DiscordExInterruptHandler {
-            context,
-            guild_id: msg.guild_id.unwrap(),
-            standby: standby.clone(),
-          })),
-        );
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_DISCORD_EX, Arc::new(Box::new(DiscordExInterruptHandler { context })));
 
         let data = IncomingMessage {
           id: msg.id.get(),
@@ -288,14 +337,9 @@ use prelude::*;
             standby: standby.clone(),
           })),
         );
-        cpu.ivt.insert(
-          syscall::SYSCALL_DISCORD_EX,
-          Arc::new(Box::new(DiscordExInterruptHandler {
-            context,
-            guild_id: reaction.guild_id.unwrap(),
-            standby: standby.clone(),
-          })),
-        );
+        cpu
+          .ivt
+          .insert(syscall::SYSCALL_DISCORD_EX, Arc::new(Box::new(DiscordExInterruptHandler { context })));
 
         let data = ReactionCreate {
           user_id: reaction.user_id.get(),
@@ -459,13 +503,13 @@ impl CpuExt for Cpu {
       }
     };
 
-    self.perf.instructions_retired += 1;
+    self.perf.instructions_retired.fetch_add(1, Ordering::AcqRel);
     if self.halt {
       return Ok(TickResult::Halt);
     }
 
-    if self.csr.load(csr::machine::POWERSTATE) == 1 && self.perf.cpu_time > CPU_TIME_LIMIT {
-      error!("running too long without yield: {:?} > {:?}", self.perf.cpu_time, CPU_TIME_LIMIT);
+    if self.csr.load(csr::machine::POWERSTATE) == 1 && *self.perf.cpu_time.lock().unwrap() > CPU_TIME_LIMIT {
+      error!("running too long without yield: {:?} > {:?}", self.perf.cpu_time.lock().unwrap(), CPU_TIME_LIMIT);
       return Ok(TickResult::TimeLimit);
     }
 
