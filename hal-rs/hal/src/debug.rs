@@ -16,6 +16,10 @@ impl Writer {
   }
 
   pub fn write_byte(&mut self, byte: u8) {
+    if self.position >= self.buffer.len() - 2 {
+      return;
+    }
+
     self.buffer[self.position] = byte;
     self.position += 1;
   }

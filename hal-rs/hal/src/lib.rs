@@ -1,5 +1,7 @@
 #![no_std]
 
+#![feature(naked_functions)]
+
 pub mod debug;
 pub mod print;
 pub mod panic;
@@ -191,4 +193,25 @@ impl PtrExt<str> for StringPtr {
   fn get(&self) -> &str {
     unsafe { read_null_terminated_string_unchecked(self.0) }
   }
+}
+
+extern {
+  fn main();
+}
+
+#[link_section = ".start"]
+#[no_mangle]
+#[naked]
+pub unsafe extern "C" fn _start() {
+  asm!(
+  "li sp, 0xffffffff81020000", // Initialize the stack
+  "j {}",
+  sym _main,
+  options(noreturn)
+  );
+}
+
+pub unsafe fn _main() {
+  main();
+  halt();
 }
