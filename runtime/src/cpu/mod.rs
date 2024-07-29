@@ -136,7 +136,7 @@ impl Cpu {
     output
       .write_fmt(format_args!(
         "cpu_time={:<#18?} insts_retired={}\n",
-        self.perf.cpu_time, self.perf.instructions_retired.load(Ordering::Acquire)
+        self.perf.cpu_time.lock().unwrap(), self.perf.instructions_retired.load(Ordering::Acquire)
       ))
       .unwrap();
     output
