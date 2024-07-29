@@ -19,6 +19,7 @@ mod system;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc, Weak};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -70,7 +71,7 @@ pub struct Cpu {
   pub apic: Apic,
   pub csr: Csr,
   pub ivt: HashMap<u64, Arc<Box<dyn InterruptHandler>>>,
-  pub perf: PerformanceCounter,
+  pub perf: Arc<PerformanceCounter>,
   pub halt: bool,
   pub wfi: StateFlow<bool>,
 }
@@ -83,18 +84,15 @@ impl Cpu {
     registers[2] = DRAM_BASE + (0x32000 * (id + 1) as u64);
     debug!("initialized sp=0x{:x}", registers[2]);
 
-    // TODO(Assasans): Wtf
-    let start_time = Box::leak(Box::new(Instant::now()));
-    let time = || start_time.elapsed();
+    let perf = Arc::new(PerformanceCounter::new());
 
     let pc = DRAM_BASE;
 
-    let mut csr = Csr::new(Box::new(time));
+    let mut csr = Csr::new(perf.clone());
     csr.store(csr::machine::POWERSTATE, 1);
 
     let apic = Apic::new();
     let ivt = HashMap::new();
-    let perf = PerformanceCounter::new();
 
     Self {
       id,
@@ -138,7 +136,7 @@ impl Cpu {
     output
       .write_fmt(format_args!(
         "cpu_time={:<#18?} insts_retired={}\n",
-        self.perf.cpu_time, self.perf.instructions_retired
+        self.perf.cpu_time, self.perf.instructions_retired.load(Ordering::Acquire)
       ))
       .unwrap();
     output

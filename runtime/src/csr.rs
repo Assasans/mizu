@@ -1,21 +1,22 @@
-use std::time::Duration;
+use std::sync::Arc;
 
 pub use mizu_hwconst::csr::*;
 use mizu_hwconst::memory::CPUID_BASE;
+use crate::perf_counter::PerformanceCounter;
 
 /// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
 /// up to 4096 CSRs.
 pub struct Csr {
   csrs: [u64; NUM_CSRS],
-  time_passed: Box<dyn Fn() -> Duration + Send + Sync>,
+  perf: Arc<PerformanceCounter>,
 }
 
 impl Csr {
   #[must_use]
-  pub fn new(time_passed: Box<dyn Fn() -> Duration + Send + Sync>) -> Self {
+  pub fn new(perf: Arc<PerformanceCounter>) -> Self {
     Self {
       csrs: [0; NUM_CSRS],
-      time_passed,
+      perf,
     }
   }
 
@@ -47,7 +48,7 @@ impl Csr {
       SIP => self.csrs[MIP] & self.csrs[MIDELEG],
       SSTATUS => self.csrs[MSTATUS] & MASK_SSTATUS,
       machine::CONFIGPTR => CPUID_BASE,
-      unprivileged::TIME => (self.time_passed)().as_nanos() as u64,
+      unprivileged::TIME => self.perf.cpu_time.lock().unwrap().as_nanos() as u64,
       _ => self.csrs[addr],
     }
   }
