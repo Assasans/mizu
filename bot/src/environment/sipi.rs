@@ -6,11 +6,13 @@ use runtime::cpu::{Cpu, InterruptHandler};
 use tokio::sync::oneshot;
 use tracing::{debug, info};
 
+use crate::environment::discord_ex::DiscordExInterruptHandler;
 use crate::environment::dump_performance::DumpPerformanceHandler;
 use crate::environment::halt::HaltHandler;
 use crate::environment::http::HttpHandler;
 use crate::environment::interrupt::IntHandler;
 use crate::environment::log::LogHandler;
+use crate::environment::png::PngHandler;
 use crate::environment::time::TimeHandler;
 use crate::execution_context::ExecutionContext;
 
@@ -32,6 +34,10 @@ impl InterruptHandler for SipiHandler {
       let mut cpu = cpu.lock().await;
       cpu.pc = pc;
       cpu.ivt.insert(
+        syscall::SYSCALL_DISCORD_EX,
+        Arc::new(Box::new(DiscordExInterruptHandler { context: self.context.clone() })),
+      );
+      cpu.ivt.insert(
         syscall::SYSCALL_PERF_DUMP,
         Arc::new(Box::new(DumpPerformanceHandler { context: self.context.clone() })),
       );
@@ -49,6 +55,7 @@ impl InterruptHandler for SipiHandler {
       cpu
         .ivt
         .insert(syscall::SYSCALL_INT, Arc::new(Box::new(IntHandler { context: self.context.clone() })));
+      cpu.ivt.insert(syscall::SYSCALL_PNG, Arc::new(Box::new(PngHandler {})));
     }
 
     let (cpu_ready_tx, cpu_ready_rx) = oneshot::channel::<()>();
