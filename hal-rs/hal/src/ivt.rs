@@ -1,8 +1,8 @@
-use core::arch::{asm, global_asm};
+use core::arch::asm;
 use core::ffi::c_void;
 
 extern "C" {
-  pub static __IVT_START: c_void;
+  pub static __ivt_start: c_void;
 }
 
 pub unsafe fn __init_ivt_vector(address: *const c_void) {
@@ -23,7 +23,7 @@ pub unsafe fn __wfi() {
 macro_rules! ivt {
   ($($index:expr => $handler:ident),* $(,)?) => {
     $(
-      global_asm!(
+      ::core::arch::global_asm!(
         ".section .text.ivt",
         concat!(".org .text.ivt + ", $index, " * 4"),
         "jal {}",
