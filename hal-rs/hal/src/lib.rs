@@ -136,6 +136,35 @@ pub extern "C" fn memcpy(dst: *mut u8, src: *const u8, mut n: usize) -> *mut u8 
   dst
 }
 
+#[no_mangle]
+pub extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+  if n == 0 || dest == src as *mut u8 {
+    return dest;
+  }
+
+  if dest < src as *mut u8 {
+    // Forward copy
+    let mut i = 0;
+    while i < n {
+      unsafe {
+        *dest.add(i) = *src.add(i);
+      }
+      i += 1;
+    }
+  } else {
+    // Backward copy to handle overlap
+    let mut i = n;
+    while i != 0 {
+      i -= 1;
+      unsafe {
+        *dest.add(i) = *src.add(i);
+      }
+    }
+  }
+
+  dest
+}
+
 pub unsafe fn read_null_terminated_string_unchecked<'a>(ptr: *const c_char) -> &'a str {
   let mut len = 0;
   let mut current_ptr = ptr;

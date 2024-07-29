@@ -59,7 +59,7 @@ impl ExecutionContext {
           TickResult::Exception(exception) => {
             http
               .create_message(channel_id)
-              .content(&format!("cpu {}: exception: {}", cpu.id, exception))?
+              .content(&format!("cpu {}: exception: {} ```c\n{}```", cpu.id, exception, cpu.dump()))?
               .await?;
           }
           TickResult::Eof => {

@@ -8,16 +8,12 @@ use runtime::bus::BusMemoryExt;
 use runtime::cpu::{Cpu, InterruptHandler};
 use tracing::debug;
 use twilight_model::http::attachment::Attachment;
-use twilight_model::id::marker::GuildMarker;
 use twilight_model::id::Id;
-use twilight_standby::Standby;
 
 use crate::execution_context::ExecutionContext;
 
 pub struct DiscordExInterruptHandler {
   pub context: Arc<ExecutionContext>,
-  pub guild_id: Id<GuildMarker>,
-  pub standby: Arc<Standby>,
 }
 
 #[async_trait]
