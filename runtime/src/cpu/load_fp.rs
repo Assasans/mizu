@@ -13,9 +13,9 @@ pub fn load_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       let addr = base_addr.wrapping_add(imm);
 
       trace!("flw {},{},{imm}: 0x{base_addr:#08x} + {imm} (0x{addr:#08x})", inst.rd(), inst.rs1());
-      let value = f32::from_bits(cpu.load(addr, 32).unwrap() as u32);
 
-      cpu.fp_regs[inst.rd()] = value as f64;
+      assert_eq!(imm % 2, 0);
+      cpu.fp_regs[inst.rd()] = f32::from_bits(cpu.load(addr, 32).unwrap() as u32) as f64;
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
@@ -26,9 +26,9 @@ pub fn load_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       let addr = base_addr.wrapping_add(imm);
 
       trace!("fld {},{},{imm}: 0x{base_addr:#08x} + {imm} (0x{addr:#08x})", inst.rd(), inst.rs1());
-      let value = f64::from_bits(cpu.load(addr, 64).unwrap());
 
-      cpu.fp_regs[inst.rd()] = value;
+      assert_eq!(imm % 2, 0);
+      cpu.fp_regs[inst.rd()] = f64::from_bits(cpu.load(addr, 64).unwrap());
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }

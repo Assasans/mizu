@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::cpu::{Cpu, Instruction};
 use crate::exception::Exception;
 
@@ -45,6 +47,7 @@ pub fn op_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       let magnitude_rs1 = cpu.fp_regs[inst.rs1()].to_bits() & MAGNITUDE_MASK;
 
       // Combine the sign bit of rs2 with the magnitude of rs1
+      trace!("fsgnj.d {}", f64::from_bits(sign_rs2 | magnitude_rs1));
       cpu.fp_regs[inst.rd()] = f64::from_bits(sign_rs2 | magnitude_rs1);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
@@ -55,46 +58,55 @@ pub fn op_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       let rs2_bits = cpu.fp_regs[inst.rs2()].to_bits();
 
       // Extract the sign bit from both rs1 and rs2
-      let sign_bit_rs1 = rs1_bits & 0x8000_0000;
-      let sign_bit_rs2 = rs2_bits & 0x8000_0000;
+      let sign_bit_rs1 = rs1_bits & 0x8000_0000_0000_0000;
+      let sign_bit_rs2 = rs2_bits & 0x8000_0000_0000_0000;
 
       // Compute the XOR of the sign bits
-      let new_sign_bit = (sign_bit_rs1 ^ sign_bit_rs2) & 0x8000_0000;
+      let new_sign_bit = (sign_bit_rs1 ^ sign_bit_rs2) & 0x8000_0000_0000_0000;
 
       // Combine the new sign bit with the remaining bits of rs1
-      let result_bits = (rs1_bits & 0x7FFF_FFFF) | new_sign_bit;
+      let result_bits = (rs1_bits & 0x7FFF_FFFF_FFFF_FFFF) | new_sign_bit;
 
+      trace!(
+        "fsgnjx.d {}, {} -> {}",
+        cpu.fp_regs[inst.rs1()],
+        cpu.fp_regs[inst.rs2()],
+        f64::from_bits(result_bits)
+      );
       cpu.fp_regs[inst.rd()] = f64::from_bits(result_bits);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
     (0x1, 0x11) => {
-      // fsgnjx.d
+      // fsgnjn.d
       const SIGN_MASK: u64 = 0x8000_0000_0000_0000;
       const MAGNITUDE_MASK: u64 = 0x7FFF_FFFF_FFFF_FFFF;
 
       // Extract the sign bit from rs2
-      let sign_rs2 = cpu.fp_regs[inst.rs2()].to_bits() & SIGN_MASK;
+      let sign_rs2 = !cpu.fp_regs[inst.rs2()].to_bits() & SIGN_MASK;
 
       // Extract the magnitude (all bits except the sign bit) from rs1
       let magnitude_rs1 = cpu.fp_regs[inst.rs1()].to_bits() & MAGNITUDE_MASK;
 
       // Combine the sign bit of rs2 with the magnitude of rs1
-      cpu.fp_regs[inst.rd()] = f64::from_bits(!sign_rs2 | magnitude_rs1);
+      trace!("fsgnjn.d {}", f64::from_bits(sign_rs2 | magnitude_rs1));
+      cpu.fp_regs[inst.rd()] = f64::from_bits(sign_rs2 | magnitude_rs1);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
     (0x0, 0x51) => {
       // fle.d
       // Performs a quiet less or equal comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
-      cpu.regs[inst.rd()] = if cpu.regs[inst.rs1()] <= cpu.regs[inst.rs2()] { 1 } else { 0 };
+      cpu.regs[inst.rd()] = if cpu.fp_regs[inst.rs1()] <= cpu.fp_regs[inst.rs2()] { 1 } else { 0 };
+      trace!("{} <= {}: {}", cpu.fp_regs[inst.rs1()], cpu.fp_regs[inst.rs2()], cpu.regs[inst.rd()]);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
     (0x1, 0x51) => {
       // flt.d
       // Performs a quiet less comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
-      cpu.regs[inst.rd()] = if cpu.regs[inst.rs1()] < cpu.regs[inst.rs2()] { 1 } else { 0 };
+      cpu.regs[inst.rd()] = if cpu.fp_regs[inst.rs1()] < cpu.fp_regs[inst.rs2()] { 1 } else { 0 };
+      trace!("{} < {}: {}", cpu.fp_regs[inst.rs1()], cpu.fp_regs[inst.rs2()], cpu.regs[inst.rd()]);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
@@ -103,7 +115,8 @@ pub fn op_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       // Performs a quiet equal comparison between floating-point registers rs1 and rs2 and record the Boolean result in integer register rd.
       // Only signaling NaN inputs cause an Invalid Operation exception.
       // The result is 0 if either operand is NaN.
-      cpu.regs[inst.rd()] = if cpu.regs[inst.rs1()] == cpu.regs[inst.rs2()] { 1 } else { 0 };
+      cpu.regs[inst.rd()] = if cpu.fp_regs[inst.rs1()] == cpu.fp_regs[inst.rs2()] { 1 } else { 0 };
+      trace!("{} == {}: {}", cpu.fp_regs[inst.rs1()], cpu.fp_regs[inst.rs2()], cpu.regs[inst.rd()]);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
@@ -121,13 +134,13 @@ pub fn op_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
     }
     (0x0, 0x15) => {
       // fmin.d
-      cpu.regs[inst.rd()] = cpu.regs[inst.rs1()].min(cpu.regs[inst.rs2()]);
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].min(cpu.fp_regs[inst.rs2()]);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
     (0x1, 0x15) => {
       // fmax.d
-      cpu.regs[inst.rd()] = cpu.regs[inst.rs1()].max(cpu.regs[inst.rs2()]);
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].max(cpu.fp_regs[inst.rs2()]);
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
