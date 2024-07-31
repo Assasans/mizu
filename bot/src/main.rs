@@ -202,9 +202,13 @@ async fn handle_event(
       let code = format!(
         r#"#![feature(lang_items)]
 #![feature(naked_functions)]
+#![allow(unused, internal_features)]
 
 #![no_std]
 #![no_main]
+
+#[macro_use]
+extern crate alloc;
 
 mod prelude;
 

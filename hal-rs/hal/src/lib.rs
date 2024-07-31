@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(warnings, unused)]
 
 #![feature(naked_functions)]
 
