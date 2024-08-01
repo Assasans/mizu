@@ -12,6 +12,9 @@ pub fn jalr(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
   let new_pc = (cpu.regs[inst.rs1()].wrapping_add(imm)) & !1;
   debug!("ret 0x{imm:x} -> 0x{new_pc:x} read from {}", inst.rs1());
 
+  // let mut returns = cpu.perf.returns.lock().unwrap();
+  // *returns.entry(new_pc).or_insert(0) += 1;
+
   cpu.regs[inst.rd()] = t;
   cpu.perf.end_cpu_time();
   Ok(new_pc)

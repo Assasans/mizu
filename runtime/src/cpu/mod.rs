@@ -23,6 +23,8 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use itertools::Itertools;
+use numfmt::Formatter;
 pub use instruction::Instruction;
 use mizu_hwconst::memory::DRAM_BASE;
 use tracing::{debug, info, trace};
@@ -131,14 +133,26 @@ impl Cpu {
   }
 
   pub fn dump(&self) -> String {
+    let returns = self.perf.returns.lock().unwrap();
+    let returns = returns.iter().sorted_by_key(|(_, count)| **count);
+    for (address, count) in returns {
+      info!("return to {:#18x}: {:<6} times", address, count);
+    }
+
     let mut output = String::new();
     output.write_fmt(format_args!("cpu={:<#18}\n", self.id)).unwrap();
-    output
-      .write_fmt(format_args!(
-        "cpu_time={:<#18?} insts_retired={}\n",
-        self.perf.cpu_time.lock().unwrap(), self.perf.instructions_retired.load(Ordering::Acquire)
-      ))
-      .unwrap();
+    {
+      let cpu_time = self.perf.cpu_time.lock().unwrap();
+      let instructions_retired = self.perf.instructions_retired.load(Ordering::Acquire);
+      output
+        .write_fmt(format_args!(
+          "cpu_time={:<#18?} insts_retired={:<13} mips={}\n",
+          cpu_time,
+          Formatter::default().fmt2(instructions_retired),
+          Formatter::default().fmt2(instructions_retired as f64 / cpu_time.as_secs_f64())
+        ))
+        .unwrap();
+    }
     output
       .write_fmt(format_args!("pc={:<#18x}       mepc={:<#18x}\n", self.pc, self.csr.load(MEPC)))
       .unwrap();
@@ -376,6 +390,11 @@ impl Cpu {
       self.regs[1],
       self.regs[2]
     );
+
+    {
+      let mut returns = self.perf.returns.lock().unwrap();
+      *returns.entry(self.pc).or_insert(0) += 1;
+    }
 
     // let opcode = Opcode::from(opcode);
     // trace!("executing opcode {:?}", opcode);

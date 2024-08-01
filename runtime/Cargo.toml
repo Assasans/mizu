@@ -12,6 +12,8 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 minstant = "0.1.7"
 priority-queue = "2.0.3"
 mizu-hwconst = { version = "0.1.0", path = "../hal-rs/hwconst" }
+itertools = "0.13.0"
+numfmt = "1.1.1"
 
 [dev-dependencies]
 tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros"] }

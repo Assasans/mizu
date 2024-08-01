@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -11,6 +12,7 @@ pub struct PerformanceCounter {
   pub cpu_time: Mutex<Duration>,
   cpu_time_start: Mutex<Option<Instant>>,
   pub instructions_retired: AtomicU64,
+  pub returns: Mutex<BTreeMap<u64, u64>>,
 }
 
 impl Default for PerformanceCounter {
@@ -26,6 +28,7 @@ impl PerformanceCounter {
       cpu_time: Mutex::new(Duration::default()),
       cpu_time_start: Mutex::new(None),
       instructions_retired: AtomicU64::new(0),
+      returns: Mutex::new(BTreeMap::new())
     }
   }
 
@@ -33,6 +36,7 @@ impl PerformanceCounter {
     *self.cpu_time.lock().unwrap() = Duration::default();
     *self.cpu_time_start.lock().unwrap() = None;
     self.instructions_retired.store(0, Ordering::Release);
+    self.returns.lock().unwrap().clear();
   }
 
   pub fn start_cpu_time(&self) {
