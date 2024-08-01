@@ -32,3 +32,30 @@ macro_rules! ivt {
     )*
   };
 }
+
+// This function must always be inlined otherwise the [a0] register will be overwritten.
+#[inline(always)]
+pub unsafe fn __save_registers() -> [u64; 8] {
+  let mut a0: u64;
+  let mut a1: u64;
+  let mut a2: u64;
+  let mut a3: u64;
+  let mut a4: u64;
+  let mut a5: u64;
+  let mut a6: u64;
+  let mut a7: u64;
+
+  asm!(
+  "",
+  out("a0") a0,
+  out("a1") a1,
+  out("a2") a2,
+  out("a3") a3,
+  out("a4") a4,
+  out("a5") a5,
+  out("a6") a6,
+  out("a7") a7,
+  );
+
+  [a0, a1, a2, a3, a4, a5, a6, a7]
+}

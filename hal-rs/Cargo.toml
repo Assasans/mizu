@@ -4,5 +4,6 @@ members = [
   "hal",
   "types",
   "hwconst",
-  "discord"
+  "discord",
+  "macros"
 ]
