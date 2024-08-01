@@ -38,7 +38,7 @@ impl ExecutionContext {
     let channel_id = self.channel_id.lock().await.unwrap();
     let http = self.http.lock().await.clone().unwrap();
 
-    let (_cpu_id, wfi) = {
+    let (cpu_id, wfi) = {
       let cpu = cpu.lock().await;
       (cpu.id, cpu.wfi.clone())
     };
@@ -59,19 +59,19 @@ impl ExecutionContext {
           TickResult::Exception(exception) => {
             http
               .create_message(channel_id)
-              .content(&format!("cpu {}: exception: {} ```c\n{}```", cpu.id, exception, cpu.dump()))?
+              .content(&format!("cpu {}: exception: {} ```c\n{}```", cpu_id, exception, cpu.dump()))?
               .await?;
           }
           TickResult::Eof => {
             http
               .create_message(channel_id)
-              .content(&format!("cpu {}: execution finished ```c\n{}```", cpu.id, cpu.dump()))?
+              .content(&format!("cpu {}: execution finished ```c\n{}```", cpu_id, cpu.dump()))?
               .await?;
           }
           TickResult::Halt => {
             http
               .create_message(channel_id)
-              .content(&format!("cpu {}: execution halted ```c\n{}```", cpu.id, cpu.dump()))?
+              .content(&format!("cpu {}: execution halted ```c\n{}```", cpu_id, cpu.dump()))?
               .await?;
           }
           TickResult::TimeLimit => {
@@ -84,10 +84,16 @@ impl ExecutionContext {
               .await?;
           }
           TickResult::WaitForInterrupt => {
-            http
-              .create_message(channel_id)
-              .content(&format!("cpu {}/wfi: waiting for interrupt at `{:#08x}`", cpu.id, cpu.pc))?
-              .await?;
+            let http = http.clone();
+            let pc = cpu.pc;
+            tokio::spawn(async move {
+              http
+                .create_message(channel_id)
+                .content(&format!("cpu {}/wfi: waiting for interrupt at `{:#08x}`", cpu_id, pc))
+                .unwrap()
+                .await
+                .unwrap();
+            });
             continue 'wfi;
           }
         }

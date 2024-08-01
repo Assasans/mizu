@@ -21,11 +21,15 @@ impl InterruptHandler for LogHandler {
     debug!("log address: 0x{:x}", address);
     let message = cpu.bus.read_string(address).unwrap().to_string_lossy().to_string();
     debug!("log message: {}", message);
-    http
-      .create_message(channel_id)
-      .content(&format!("sys_print cpu {}: `{}`", cpu.id, message))
-      .unwrap()
-      .await
-      .unwrap();
+
+    let cpu_id = cpu.id;
+    tokio::spawn(async move {
+      http
+        .create_message(channel_id)
+        .content(&format!("sys_print cpu {}: `{}`", cpu_id, message))
+        .unwrap()
+        .await
+        .unwrap();
+    });
   }
 }

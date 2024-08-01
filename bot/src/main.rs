@@ -4,8 +4,8 @@ mod execution_context;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use mizu_hal_discord::discord::discord_ex_event::DiscordExEventUnion;
@@ -280,7 +280,7 @@ use prelude::*;
     }
     Event::MessageCreate(msg) => {
       debug!("create message: {:?}", msg.id);
-      if msg.author.bot || msg.content.len() > 200 {
+      if msg.author.bot || msg.content.len() > 1200 {
         return Ok(());
       }
 
@@ -513,7 +513,11 @@ impl CpuExt for Cpu {
     }
 
     if self.csr.load(csr::machine::POWERSTATE) == 1 && *self.perf.cpu_time.lock().unwrap() > CPU_TIME_LIMIT {
-      error!("running too long without yield: {:?} > {:?}", self.perf.cpu_time.lock().unwrap(), CPU_TIME_LIMIT);
+      error!(
+        "running too long without yield: {:?} > {:?}",
+        self.perf.cpu_time.lock().unwrap(),
+        CPU_TIME_LIMIT
+      );
       return Ok(TickResult::TimeLimit);
     }
 
