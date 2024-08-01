@@ -1,7 +1,9 @@
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub use mizu_hwconst::csr::*;
 use mizu_hwconst::memory::CPUID_BASE;
+
 use crate::perf_counter::PerformanceCounter;
 
 /// Control and status registers. RISC-V ISA sets aside a 12-bit encoding space (csr[11:0]) for
@@ -14,10 +16,7 @@ pub struct Csr {
 impl Csr {
   #[must_use]
   pub fn new(perf: Arc<PerformanceCounter>) -> Self {
-    Self {
-      csrs: [0; NUM_CSRS],
-      perf,
-    }
+    Self { csrs: [0; NUM_CSRS], perf }
   }
 
   #[must_use]
@@ -48,6 +47,7 @@ impl Csr {
       SIP => self.csrs[MIP] & self.csrs[MIDELEG],
       SSTATUS => self.csrs[MSTATUS] & MASK_SSTATUS,
       machine::CONFIGPTR => CPUID_BASE,
+      machine::INSTRET => self.perf.instructions_retired.load(Ordering::Acquire),
       unprivileged::TIME => self.perf.cpu_time.lock().unwrap().as_nanos() as u64,
       _ => self.csrs[addr],
     }

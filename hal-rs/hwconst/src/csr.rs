@@ -64,6 +64,9 @@ pub mod machine {
 
   /// Hart power state. Non-standard.
   pub const POWERSTATE: usize = 0x7c0;
+
+  /// Machine instructions-retired counter.
+  pub const INSTRET: usize = 0xB02;
 }
 
 // mstatus and sstatus field mask
