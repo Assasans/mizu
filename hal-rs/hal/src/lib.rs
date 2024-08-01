@@ -168,6 +168,15 @@ pub extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
   dest
 }
 
+#[no_mangle]
+pub extern "C" fn fmod(a: f64, b: f64) -> f64 {
+  unsafe {
+    let mut res: f64;
+    asm!(".insn r OP_FP, 0x0, 0x73, {out}, {a}, {b}", a = in(freg) a, b = in(freg) b, out = out(freg) res);
+    res
+  }
+}
+
 pub unsafe fn read_null_terminated_string_unchecked<'a>(ptr: *const c_char) -> &'a str {
   let mut len = 0;
   let mut current_ptr = ptr;

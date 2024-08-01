@@ -1,3 +1,4 @@
+use std::ops::Rem;
 use tracing::trace;
 
 use crate::cpu::{Cpu, Instruction};
@@ -157,6 +158,13 @@ pub fn op_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
+    (_, 0x2c) => {
+      // fsqrt.s
+      // Perform single-precision square root.
+      cpu.fp_regs[inst.rd()] = (cpu.fp_regs[inst.rs1()] as f32).sqrt() as f64;
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
     (0x7, 0x69) => {
       // fcvt.d.l
       cpu.fp_regs[inst.rd()] = cpu.regs[inst.rs1()] as i64 as f64;
@@ -193,6 +201,48 @@ pub fn op_fp(inst: Instruction, cpu: &mut Cpu) -> Result<u64, Exception> {
       cpu.perf.end_cpu_time();
       cpu.update_pc()
     }
+    (0x0, 0x70) => {
+      // fpow, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].powf(cpu.fp_regs[inst.rs2()]);
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
+    (0x1, 0x70) => {
+      // fcbrt, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].cbrt();
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
+    (0x0, 0x72) => {
+      // fsin, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].sin();
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
+    (0x1, 0x72) => {
+      // fcos, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].cos();
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
+    (0x2, 0x72) => {
+      // fatan2, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].atan2(cpu.fp_regs[inst.rs2()]);
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
+    (0x0, 0x73) => {
+      // frem, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].rem(cpu.fp_regs[inst.rs2()]);
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
+    (0x1, 0x73) => {
+      // fround, non-standard
+      cpu.fp_regs[inst.rd()] = cpu.fp_regs[inst.rs1()].round();
+      cpu.perf.end_cpu_time();
+      cpu.update_pc()
+    },
     _ => {
       cpu.perf.end_cpu_time();
       Err(Exception::IllegalInstruction(*inst))
