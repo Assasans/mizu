@@ -16,7 +16,7 @@ impl Dram {
     dram.splice(..code.len(), code);
     Self {
       dram,
-      code_range: DRAM_BASE..DRAM_BASE + 0x24000,
+      code_range: DRAM_BASE..DRAM_BASE,
     }
   }
 

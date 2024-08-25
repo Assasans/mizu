@@ -190,6 +190,15 @@ pub unsafe fn read_null_terminated_string_unchecked<'a>(ptr: *const c_char) -> &
   core::str::from_utf8_unchecked(slice)
 }
 
+/// Explodes the execution context.
+///
+/// All cores will shut down and will not automatically restart at the next Discord event.
+pub unsafe fn __expl() -> ! {
+  // Emit 0x7ffffff
+  asm!(".insn r 0x7f, 0x7, 0x3, x31, x31, x31");
+  loop {}
+}
+
 pub trait PtrExt<T: ?Sized> {
   fn new(value: &T) -> Self;
   fn get(&self) -> &T;

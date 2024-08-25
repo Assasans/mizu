@@ -280,7 +280,7 @@ use prelude::*;
     }
     Event::MessageCreate(msg) => {
       debug!("create message: {:?}", msg.id);
-      if msg.author.bot || msg.content.len() > 1200 {
+      if msg.author.bot || msg.content.len() > 1200 || msg.content.starts_with("//") {
         return Ok(());
       }
 
@@ -469,11 +469,18 @@ pub enum TickResult {
   Halt,
   TimeLimit,
   WaitForInterrupt,
+  Explosion,
 }
 
 #[async_trait]
 impl CpuExt for Cpu {
   async fn run_tick(&mut self) -> Result<TickResult, Box<dyn Error + Send + Sync>> {
+    if let Some(isolate) = self.isolate.as_ref().map(|isolate| isolate.upgrade()).flatten() {
+      if isolate.exploded.load(Ordering::Acquire) {
+        return Ok(TickResult::Explosion);
+      }
+    }
+
     if self.wfi.get() {
       return Ok(TickResult::WaitForInterrupt);
     }
@@ -497,6 +504,11 @@ impl CpuExt for Cpu {
     match self.execute(inst).await {
       Ok(new_pc) => self.pc = new_pc,
       Err(exception) => {
+        if let Exception::Explosion(_) = exception {
+          error!("execute failed: {:?}", exception);
+          return Ok(TickResult::Exception(exception));
+        }
+
         self.handle_exception(exception);
         if exception.is_fatal() {
           error!("execute failed: {:?}", exception);

@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use runtime::cpu::Cpu;
 use runtime::isolate::Isolate;
@@ -9,6 +10,7 @@ use tracing::{debug, info};
 use twilight_http::Client;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
+use runtime::exception::Exception;
 
 use crate::{CpuExt, TickResult};
 
@@ -57,10 +59,22 @@ impl ExecutionContext {
         match cpu.run_tick().await? {
           TickResult::Continue => continue,
           TickResult::Exception(exception) => {
-            http
-              .create_message(channel_id)
-              .content(&format!("cpu {}: exception: {} ```c\n{}```", cpu_id, exception, cpu.dump()))?
-              .await?;
+            if let Exception::Explosion(pc) = exception {
+              self.isolate.lock().await.as_mut().unwrap().exploded.store(true, Ordering::Release);
+
+              http
+                .create_message(channel_id)
+                .content(&format!("execution context exploded at `{:#08x}` in cpu {}: ```c\n{}```", pc, cpu_id, cpu.dump()))?
+                .await?;
+            } else {
+              http
+                .create_message(channel_id)
+                .content(&format!("cpu {}: exception: {} ```c\n{}```", cpu_id, exception, cpu.dump()))?
+                .await?;
+            }
+          }
+          TickResult::Explosion => {
+            // Initiator should have already printed an error message
           }
           TickResult::Eof => {
             http

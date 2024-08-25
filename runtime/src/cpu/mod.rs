@@ -385,7 +385,7 @@ impl Cpu {
     self.regs[0] = 0;
 
     trace!(
-      "pc=0x{:x} ra=0x{:x} sp=0x{:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}",
+      "pc=0x{:x} ra=0x{:x} sp=0x{:x} inst=0x{inst:x} opcode=0b{opcode:07b} ({opcode:x}) rd=0b{rd:05b} rs1=0b{rs1:05b} rs2=0b{rs2:05b} funct3=0b{funct3:03b} funct7=0b{funct7:03b}",
       self.pc,
       self.regs[1],
       self.regs[2]
@@ -400,6 +400,10 @@ impl Cpu {
     // trace!("executing opcode {:?}", opcode);
 
     match opcode {
+      127 if inst == 0x7ffffff => {
+        self.perf.end_cpu_time();
+        Err(Exception::Explosion(self.pc))
+      },
       opcode::LOAD => load(instruction, self),
       opcode::LOAD_FP => load_fp(instruction, self),
       opcode::OP_IMM => op_imm(instruction, self),

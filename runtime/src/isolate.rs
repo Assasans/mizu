@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use tokio::sync::Mutex;
 use tracing::info;
@@ -9,6 +10,7 @@ use crate::cpu::Cpu;
 pub struct Isolate {
   pub bus: Arc<Bus>,
   pub cores: std::sync::Mutex<Vec<Arc<Mutex<Cpu>>>>,
+  pub exploded: AtomicBool
 }
 
 impl Isolate {
@@ -16,6 +18,7 @@ impl Isolate {
     let this = Arc::new(Self {
       bus,
       cores: std::sync::Mutex::new(Vec::new()),
+      exploded: AtomicBool::new(false),
     });
 
     this.add_core(Cpu::new(0, this.bus.clone(), Some(Arc::downgrade(&this))));

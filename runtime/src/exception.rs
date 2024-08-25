@@ -19,6 +19,9 @@ pub enum Exception {
   LoadPageFault(u64),
   StoreAMOPageFault(u64),
   RuntimeFault(u64),
+
+  /* Non-standard */
+  Explosion(u64),
 }
 
 impl fmt::Display for Exception {
@@ -40,6 +43,7 @@ impl fmt::Display for Exception {
       LoadPageFault(addr) => write!(f, "Load page fault {:#x}", addr),
       StoreAMOPageFault(addr) => write!(f, "Store or AMO page fault {:#x}", addr),
       RuntimeFault(addr) => write!(f, "Runtime fault {:#x}", addr),
+      Explosion(addr) => write!(f, "Explosion {:#x}", addr),
     }
   }
 }
@@ -64,6 +68,7 @@ impl Exception {
       LoadPageFault(addr) => addr,
       StoreAMOPageFault(addr) => addr,
       RuntimeFault(addr) => addr,
+      Explosion(addr) => addr,
     }
   }
 
@@ -86,6 +91,7 @@ impl Exception {
       LoadPageFault(_) => 13,
       StoreAMOPageFault(_) => 15,
       RuntimeFault(_) => 16,
+      Explosion(_) => 17,
     }
   }
 
@@ -99,7 +105,8 @@ impl Exception {
       | StoreAMOAddrMisaligned(_)
       | StoreAMOAccessFault(_)
       | IllegalInstruction(_)
-      | RuntimeFault(_) => true,
+      | RuntimeFault(_)
+      | Explosion(_) => true,
       _else => false,
     }
   }
