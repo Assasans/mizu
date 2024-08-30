@@ -1,3 +1,4 @@
+pub mod address_decoder;
 pub mod apic;
 pub mod bus;
 pub mod cpu;

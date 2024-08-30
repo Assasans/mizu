@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use mizu_hwconst::memory::{DRAM_BASE, DRAM_SIZE};
+use mizu_hwconst::memory::DRAM_SIZE;
 use tracing::{error, warn};
 
 use crate::exception::Exception;
@@ -16,7 +16,7 @@ impl Dram {
     dram.splice(..code.len(), code);
     Self {
       dram,
-      code_range: DRAM_BASE..DRAM_BASE,
+      code_range: 0..0,
     }
   }
 
@@ -27,7 +27,7 @@ impl Dram {
       return Err(Exception::LoadAccessFault(addr));
     }
     let nbytes = size / 8;
-    let index = (addr - DRAM_BASE) as usize;
+    let index = addr as usize;
     let mut code = self.dram[index] as u64;
     // shift the bytes to build up the desired value
     for i in 1..nbytes {
@@ -49,7 +49,7 @@ impl Dram {
     }
 
     let nbytes = size / 8;
-    let index = (addr - DRAM_BASE) as usize;
+    let index = addr as usize;
     for i in 0..nbytes {
       let offset = 8 * i as usize;
       self.dram[index + i as usize] = ((value >> offset) & 0xff) as u8;

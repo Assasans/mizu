@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::mem::size_of;
+use std::ops::RangeInclusive;
 use std::sync::RwLock;
 use std::{ptr, slice};
 
@@ -7,29 +8,72 @@ use mizu_hwconst::memory::*;
 use rand::{thread_rng, RngCore};
 use tracing::{debug, error, trace};
 
+use crate::address_decoder::{AddressDecoder, AddressDecoderEntry};
 use crate::dram::Dram;
 use crate::exception::Exception;
 
 pub struct Bus {
   pub dram: RwLock<Dram>,
   pub hardware: RwLock<Vec<u8>>,
+  pub address_decoder: RwLock<AddressDecoder>,
+}
+
+pub fn store_fail(_bus: &Bus, addr: u64, _range: RangeInclusive<u64>, _size: u64, _value: u64) -> Result<(), Exception> {
+  Err(Exception::StoreAMOAccessFault(addr))
 }
 
 impl Bus {
   #[must_use]
   pub fn new(code: Vec<u8>) -> Self {
-    Self {
-      dram: RwLock::new(Dram::new(code)),
-      hardware: RwLock::new(vec![0xaa; HARDWARE_SIZE as usize]),
-    }
-  }
+    let mut address_decoder = AddressDecoder::new();
+    address_decoder.insert(DRAM_BASE..=DRAM_END, AddressDecoderEntry {
+      load: |bus, addr, range, size| bus.dram.read().unwrap().load(addr - range.start(), size),
+      store: |bus, addr, range, size, value| bus.dram.write().unwrap().store(addr - range.start(), size, value),
+    });
+    address_decoder.insert(HARDWARE_BASE..=HARDWARE_END, AddressDecoderEntry {
+      load: |bus, addr, range, size| {
+        if ![8, 16, 32, 64].contains(&size) {
+          error!("unaligned load at 0x{addr:x}, {size}");
+          return Err(Exception::LoadAccessFault(addr));
+        }
+        let nbytes = size / 8;
+        let index = (addr - HARDWARE_BASE) as usize;
+        let memory = bus.hardware.read().unwrap();
+        let mut code = memory[index] as u64;
+        // shift the bytes to build up the desired value
+        for i in 1..nbytes {
+          code |= (memory[index + i as usize] as u64) << (i * 8);
+        }
 
-  pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
-    trace!("bus load at 0x{addr:x}");
-    match addr {
-      CPUID_BASE..=CPUID_END => {
-        let offset = (addr - CPUID_BASE) as usize;
-        return match offset {
+        Ok(code)
+      },
+      store: |bus, addr, range, size, value| {
+        if ![8, 16, 32, 64].contains(&size) {
+          return Err(Exception::StoreAMOAccessFault(addr));
+        }
+
+        let nbytes = size / 8;
+        let index = (addr - HARDWARE_BASE) as usize;
+        for i in 0..nbytes {
+          let offset = 8 * i as usize;
+          let mut memory = bus.hardware.write().unwrap();
+          memory[index + i as usize] = ((value >> offset) & 0xff) as u8;
+        }
+        Ok(())
+      },
+    });
+    address_decoder.insert(RANDOM_BASE..=RANDOM_END, AddressDecoderEntry {
+      load: |bus, addr, range, size| {
+        let mut random = [0u8; 8];
+        thread_rng().fill_bytes(&mut random[..(size / 8) as usize]);
+        Ok(u64::from_le_bytes(random))
+      },
+      store: store_fail,
+    });
+    address_decoder.insert(CPUID_BASE..=CPUID_END, AddressDecoderEntry {
+      load: |bus, addr, range, size| {
+        let offset = (addr - range.start()) as usize;
+        match offset {
           // name
           0x0..=0x99 => {
             let version = format!("mizu emulated risc-v runtime v{}", env!("CARGO_PKG_VERSION"));
@@ -40,31 +84,25 @@ impl Bus {
             Ok(0)
           }
           _ => Err(Exception::LoadAccessFault(addr)),
-        };
-      }
-      RANDOM_BASE..=RANDOM_END => {
-        let mut random = [0u8; 8];
-        thread_rng().fill_bytes(&mut random[..(size / 8) as usize]);
-        Ok(u64::from_le_bytes(random))
-      }
-      HARDWARE_BASE..=HARDWARE_END => {
-        if ![8, 16, 32, 64].contains(&size) {
-          error!("unaligned load at 0x{addr:x}, {size}");
-          return Err(Exception::LoadAccessFault(addr));
         }
-        let nbytes = size / 8;
-        let index = (addr - HARDWARE_BASE) as usize;
-        let memory = self.hardware.read().unwrap();
-        let mut code = memory[index] as u64;
-        // shift the bytes to build up the desired value
-        for i in 1..nbytes {
-          code |= (memory[index + i as usize] as u64) << (i * 8);
-        }
+      },
+      store: store_fail,
+    });
 
-        Ok(code)
-      }
-      DRAM_BASE..=DRAM_END => self.dram.read().unwrap().load(addr, size),
-      _ => {
+    Self {
+      dram: RwLock::new(Dram::new(code)),
+      hardware: RwLock::new(vec![0xaa; HARDWARE_SIZE as usize]),
+      address_decoder: RwLock::new(address_decoder),
+    }
+  }
+
+  pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {
+    trace!("bus load at 0x{addr:x}");
+
+    let address_decoder = self.address_decoder.read().unwrap();
+    match address_decoder.lookup(addr) {
+      Some((range, entry)) => (entry.load)(self, addr, range, size),
+      None => {
         error!("invalid load at 0x{addr:x}");
         Err(Exception::LoadAccessFault(addr))
       }
@@ -73,23 +111,11 @@ impl Bus {
 
   pub fn store(&self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
     debug!("writing {value:x} at {addr:x}");
-    match addr {
-      HARDWARE_BASE..=HARDWARE_END => {
-        if ![8, 16, 32, 64].contains(&size) {
-          return Err(Exception::StoreAMOAccessFault(addr));
-        }
 
-        let nbytes = size / 8;
-        let index = (addr - HARDWARE_BASE) as usize;
-        for i in 0..nbytes {
-          let offset = 8 * i as usize;
-          let mut memory = self.hardware.write().unwrap();
-          memory[index + i as usize] = ((value >> offset) & 0xff) as u8;
-        }
-        Ok(())
-      }
-      DRAM_BASE..=DRAM_END => self.dram.write().unwrap().store(addr, size, value),
-      _ => Err(Exception::StoreAMOAccessFault(addr)),
+    let address_decoder = self.address_decoder.read().unwrap();
+    match address_decoder.lookup(addr) {
+      Some((range, entry)) => (entry.store)(self, addr, range, size, value),
+      None => Err(Exception::StoreAMOAccessFault(addr)),
     }
   }
 }
