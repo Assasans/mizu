@@ -1,7 +1,6 @@
 use std::ops::Range;
 
-use mizu_hwconst::memory::DRAM_SIZE;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::exception::Exception;
 
@@ -10,10 +9,13 @@ pub struct Dram {
 }
 
 impl Dram {
-  pub fn new(code: Vec<u8>) -> Self {
-    let mut dram = vec![0; DRAM_SIZE as usize];
-    dram.splice(..code.len(), code);
-    Self { dram }
+  pub fn new(size: usize) -> Self {
+    Self { dram: vec![0; size] }
+  }
+
+  pub fn init(&mut self, data: &[u8]) {
+    self.dram[..data.len()].copy_from_slice(data);
+    info!("initialized dram with {} bytes of data", data.len());
   }
 
   pub fn load(&self, addr: u64, size: u64) -> Result<u64, Exception> {

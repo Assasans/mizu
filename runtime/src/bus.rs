@@ -14,7 +14,7 @@ use crate::exception::Exception;
 
 pub struct Bus {
   pub dram: RwLock<Dram>,
-  pub hardware: RwLock<Vec<u8>>,
+  pub hardware: RwLock<Dram>,
   pub address_decoder: RwLock<AddressDecoder>,
 }
 
@@ -31,36 +31,8 @@ impl Bus {
       store: |bus, addr, range, size, value| bus.dram.write().unwrap().store(addr - range.start(), size, value),
     });
     address_decoder.insert(HARDWARE_BASE..=HARDWARE_END, AddressDecoderEntry {
-      load: |bus, addr, range, size| {
-        if ![8, 16, 32, 64].contains(&size) {
-          error!("unaligned load at 0x{addr:x}, {size}");
-          return Err(Exception::LoadAccessFault(addr));
-        }
-        let nbytes = size / 8;
-        let index = (addr - HARDWARE_BASE) as usize;
-        let memory = bus.hardware.read().unwrap();
-        let mut code = memory[index] as u64;
-        // shift the bytes to build up the desired value
-        for i in 1..nbytes {
-          code |= (memory[index + i as usize] as u64) << (i * 8);
-        }
-
-        Ok(code)
-      },
-      store: |bus, addr, range, size, value| {
-        if ![8, 16, 32, 64].contains(&size) {
-          return Err(Exception::StoreAMOAccessFault(addr));
-        }
-
-        let nbytes = size / 8;
-        let index = (addr - HARDWARE_BASE) as usize;
-        for i in 0..nbytes {
-          let offset = 8 * i as usize;
-          let mut memory = bus.hardware.write().unwrap();
-          memory[index + i as usize] = ((value >> offset) & 0xff) as u8;
-        }
-        Ok(())
-      },
+      load: |bus, addr, range, size| bus.hardware.read().unwrap().load(addr - range.start(), size),
+      store: |bus, addr, range, size, value| bus.hardware.write().unwrap().store(addr - range.start(), size, value),
     });
     address_decoder.insert(RANDOM_BASE..=RANDOM_END, AddressDecoderEntry {
       load: |bus, addr, range, size| {
@@ -89,9 +61,12 @@ impl Bus {
       store: store_fail,
     });
 
+    let mut dram = Dram::new(DRAM_SIZE as usize);
+    dram.init(&code);
+
     Self {
-      dram: RwLock::new(Dram::new(code)),
-      hardware: RwLock::new(vec![0xaa; HARDWARE_SIZE as usize]),
+      dram: RwLock::new(dram),
+      hardware: RwLock::new(Dram::new(HARDWARE_SIZE as usize)),
       address_decoder: RwLock::new(address_decoder),
     }
   }
