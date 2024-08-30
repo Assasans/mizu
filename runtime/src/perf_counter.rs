@@ -13,6 +13,8 @@ pub struct PerformanceCounter {
   cpu_time_start: Mutex<Option<Instant>>,
   pub instructions_retired: AtomicU64,
   pub returns: Mutex<BTreeMap<u64, u64>>,
+  pub loads: AtomicU64,
+  pub stores: AtomicU64,
 }
 
 impl Default for PerformanceCounter {
@@ -28,7 +30,9 @@ impl PerformanceCounter {
       cpu_time: Mutex::new(Duration::default()),
       cpu_time_start: Mutex::new(None),
       instructions_retired: AtomicU64::new(0),
-      returns: Mutex::new(BTreeMap::new())
+      returns: Mutex::new(BTreeMap::new()),
+      loads: AtomicU64::new(0),
+      stores: AtomicU64::new(0),
     }
   }
 
@@ -37,6 +41,8 @@ impl PerformanceCounter {
     *self.cpu_time_start.lock().unwrap() = None;
     self.instructions_retired.store(0, Ordering::Release);
     self.returns.lock().unwrap().clear();
+    self.loads.store(0, Ordering::Release);
+    self.stores.store(0, Ordering::Release);
   }
 
   pub fn start_cpu_time(&self) {

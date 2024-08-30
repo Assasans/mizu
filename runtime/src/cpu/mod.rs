@@ -115,11 +115,13 @@ impl Cpu {
 
   /// Load a value from a dram.
   pub fn load(&mut self, addr: u64, size: u64) -> Result<u64, Exception> {
+    self.perf.loads.fetch_add(1, Ordering::Acquire);
     self.bus.load(addr, size)
   }
 
   /// Store a value to a dram.
   pub fn store(&mut self, addr: u64, size: u64, value: u64) -> Result<(), Exception> {
+    self.perf.stores.fetch_add(1, Ordering::Acquire);
     self.bus.store(addr, size, value)
   }
 
@@ -144,12 +146,22 @@ impl Cpu {
     {
       let cpu_time = self.perf.cpu_time.lock().unwrap();
       let instructions_retired = self.perf.instructions_retired.load(Ordering::Acquire);
+      let loads = self.perf.loads.load(Ordering::Acquire);
+      let stores = self.perf.stores.load(Ordering::Acquire);
+
       output
         .write_fmt(format_args!(
-          "cpu_time={:<#18?} insts_retired={:<13} mips={}\n",
+          "cpu_time={:<#18?} insts_retired={:<13} ips={}\n",
           cpu_time,
           Formatter::default().fmt2(instructions_retired),
           Formatter::default().fmt2(instructions_retired as f64 / cpu_time.as_secs_f64())
+        ))
+        .unwrap();
+      output
+        .write_fmt(format_args!(
+          "loads={:<21} stores={}\n",
+          Formatter::default().fmt2(loads),
+          Formatter::default().fmt2(stores)
         ))
         .unwrap();
     }
